@@ -1,16 +1,15 @@
 // components/WidgetTwoHealth.js
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, AppState } from 'react-native';
 import AppleHealthKit from 'react-native-health';
 
-// Format yyyy-mm-dd for map keys
+// helpers
 const dkey = (d) => {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 };
-// Start/end of a day
 const dayStart = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
 const dayEnd   = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
 
@@ -18,10 +17,12 @@ export default function WidgetTwoHealth() {
   const [state, setState] = useState({
     ready: false,
     error: null,
-    days: [], // [{label, value, key}]
+    days: [],            // [{ key, label, value }]
+    loading: false,
+    lastUpdated: null,   // Date
   });
 
-  // Build a fixed 7-day window ending today
+  // 7-day fixed window ending today
   const window7 = useMemo(() => {
     const today = dayStart(new Date());
     const days = [];
@@ -31,152 +32,197 @@ export default function WidgetTwoHealth() {
       days.push({
         date: d,
         key: dkey(d),
-        label: d.toLocaleDateString(undefined, { weekday: 'short' }), // Sun, Mon, ...
+        label: d.toLocaleDateString(undefined, { weekday: 'short' }),
       });
     }
-    const startISO = dayStart(new Date(days[0].date)).toISOString();
-    const endISO = dayEnd(new Date(days[6].date)).toISOString();
-    return { days, startISO, endISO };
+    return {
+      days,
+      startISO: dayStart(days[0].date).toISOString(),
+      endISO: dayEnd(days[6].date).toISOString(),
+    };
   }, []);
 
+  const initOnceRef = useRef(false);
+
+  // ---- HealthKit init on mount
   useEffect(() => {
-    console.log('[W2H] mount');
+    if (initOnceRef.current) return;
+    initOnceRef.current = true;
 
     if (!AppleHealthKit || typeof AppleHealthKit.initHealthKit !== 'function') {
-      console.log('[W2H] missing native module (use dev client/Xcode, not Expo Go)');
-      setState((s) => ({ ...s, error: 'HealthKit native module not linked.' }));
+      setState((s) => ({ ...s, error: 'HealthKit native module not linked. Build from Xcode/dev client.' }));
       return;
     }
 
     const perms = {
-      permissions: {
-        read: [AppleHealthKit.Constants.Permissions.Steps],
-        write: [],
-      },
+      permissions: { read: [AppleHealthKit.Constants.Permissions.Steps], write: [] },
     };
 
     const hasIsAvailable = typeof AppleHealthKit.isAvailable === 'function';
     const hasIsHealthDataAvailable = typeof AppleHealthKit.isHealthDataAvailable === 'function';
-    console.log('[W2H] hasIsAvailable:', hasIsAvailable, 'hasIsHealthDataAvailable:', hasIsHealthDataAvailable);
 
     const continueInit = () => {
-      console.log('[W2H] initHealthKit perms:', perms);
       AppleHealthKit.initHealthKit(perms, (err) => {
-        console.log('[W2H] init callback err:', err);
         if (err) { setState((s) => ({ ...s, error: String(err) })); return; }
-        fetchSteps();
+        fetchSteps(true); // first load
       });
     };
 
     if (hasIsAvailable) {
       AppleHealthKit.isAvailable((err, available) => {
-        console.log('[W2H] isAvailable err ->', err, 'available ->', available);
         if (err) { setState((s) => ({ ...s, error: String(err) })); return; }
         if (available === false) { setState((s) => ({ ...s, error: 'Health not available on this device.' })); return; }
         continueInit();
       });
     } else if (hasIsHealthDataAvailable) {
       const available = AppleHealthKit.isHealthDataAvailable();
-      console.log('[W2H] isHealthDataAvailable ->', available);
       if (!available) { setState((s) => ({ ...s, error: 'Health not available on this device.' })); return; }
       continueInit();
     } else {
-      console.log('[W2H] no availability method; proceeding…');
       continueInit();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function fetchSteps() {
-    const options = {
+  // ---- Fetch steps (can be called by button or timer)
+  const fetchSteps = useCallback((firstLoad = false) => {
+    setState((s) => ({ ...s, loading: true, error: firstLoad ? s.error : null }));
+
+    const opts = {
       startDate: window7.startISO,
       endDate: window7.endISO,
       includeManuallyAdded: true,
     };
-    console.log('[W2H] getDailyStepCountSamples opts:', options);
 
     if (typeof AppleHealthKit.getDailyStepCountSamples !== 'function') {
-      console.log('[W2H] ERROR: getDailyStepCountSamples not available.');
-      setState((s) => ({ ...s, error: 'Steps API not available (library version mismatch?)' }));
+      setState((s) => ({
+        ...s,
+        loading: false,
+        error: 'Steps API not available (library version mismatch?)',
+      }));
       return;
     }
 
-    AppleHealthKit.getDailyStepCountSamples(options, (err, results = []) => {
+    AppleHealthKit.getDailyStepCountSamples(opts, (err, results = []) => {
       if (err) {
-        console.log('[W2H] steps error:', err);
-        setState((s) => ({ ...s, error: String(err) }));
+        setState((s) => ({ ...s, loading: false, error: String(err) }));
         return;
       }
-      console.log('[W2H] raw results:', results);
 
-      // Sum values by day key
       const map = Object.create(null);
       results.forEach((r) => {
-        const k = r.startDate?.slice(0, 10); // yyyy-mm-dd at start of day
+        const k = r.startDate?.slice(0, 10);
         if (!k) return;
         map[k] = (map[k] || 0) + (typeof r.value === 'number' ? r.value : 0);
       });
 
-      // Build the fixed 7-day array (fill missing with 0)
       const days = window7.days.map(({ key, label }) => ({
         key,
         label,
         value: Math.round(map[key] || 0),
       }));
 
-      console.log('[W2H] folded 7-day steps:', days);
-      setState({ ready: true, error: null, days });
+      setState({
+        ready: true,
+        error: null,
+        loading: false,
+        days,
+        lastUpdated: new Date(),
+      });
     });
-  }
+  }, [window7]);
+
+  // ---- Auto-refresh every 2 hours (pauses in background)
+  useEffect(() => {
+    let timer = setInterval(() => fetchSteps(false), 2 * 60 * 60 * 1000); // 2h
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') {
+        // refresh when app returns to foreground
+        fetchSteps(false);
+        if (!timer) timer = setInterval(() => fetchSteps(false), 2 * 60 * 60 * 1000);
+      } else {
+        clearInterval(timer);
+        timer = null;
+      }
+    });
+    return () => {
+      sub.remove();
+      if (timer) clearInterval(timer);
+    };
+  }, [fetchSteps]);
 
   const max = Math.max(1, ...state.days.map((d) => d.value));
   const total = state.days.reduce((a, b) => a + b.value, 0);
 
+  // ---- UI
   if (state.error) {
     return (
       <View style={styles.card}>
-        <Text style={styles.title}>Steps (Last 7 Days)</Text>
+        <Header onRefresh={() => fetchSteps(false)} loading={state.loading} />
         <Text style={styles.err}>Error: {state.error}</Text>
         <Text style={styles.hint}>Settings → Health → Data Access → enable “Steps” for this app.</Text>
       </View>
     );
   }
 
-  if (!state.ready) {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.title}>Steps (Last 7 Days)</Text>
-        <Text style={styles.sub}>Loading… (watch Metro/Xcode logs starting with [W2H])</Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Steps (Last 7 Days)</Text>
+      <Header onRefresh={() => fetchSteps(false)} loading={state.loading} lastUpdated={state.lastUpdated} />
 
-      <View style={styles.chart}>
-        {state.days.map((d, i) => {
-          const heightPct = (d.value / max) * 100;
-          return (
-            <View key={d.key} style={styles.barBlock}>
-              <View
-                style={[styles.bar, { height: `${heightPct}%` }]}
-                accessibilityLabel={`${d.label}: ${d.value} steps`}
-              />
-              <Text style={styles.barLabel}>{d.label}</Text>
-              <Text style={styles.barValue}>{d.value.toLocaleString()}</Text>
-            </View>
-          );
-        })}
-      </View>
+      {!state.ready ? (
+        <Text style={styles.sub}>Loading…</Text>
+      ) : (
+        <>
+          <View style={styles.chart}>
+            {state.days.map((d) => {
+              const heightPct = (d.value / max) * 100;
+              return (
+                <View key={d.key} style={styles.barBlock}>
+                  <View
+                    style={[styles.bar, { height: `${heightPct}%` }]}
+                    accessibilityLabel={`${d.label}: ${d.value} steps`}
+                  />
+                  <Text style={styles.barLabel}>{d.label}</Text>
+                  <Text style={styles.barValue}>{d.value.toLocaleString()}</Text>
+                </View>
+              );
+            })}
+          </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Total: {total.toLocaleString()}</Text>
-        <Text style={styles.footerText}>Avg: {(total / 7).toFixed(0)}</Text>
-      </View>
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Total: {total.toLocaleString()}</Text>
+            <Text style={styles.footerText}>Avg: {(total / 7).toFixed(0)}</Text>
+          </View>
+        </>
+      )}
     </View>
   );
+}
+
+// Small header with Refresh button + last updated
+function Header({ onRefresh, loading, lastUpdated }) {
+  return (
+    <View style={styles.headerRow}>
+      <Text style={styles.title}>Steps (Last 7 Days)</Text>
+      <TouchableOpacity
+        onPress={onRefresh}
+        disabled={loading}
+        style={[styles.refreshBtn, loading && { opacity: 0.6 }]}
+        accessibilityRole="button"
+        accessibilityLabel="Refresh steps"
+      >
+        <Text style={styles.refreshText}>{loading ? 'Refreshing…' : 'Refresh'}</Text>
+      </TouchableOpacity>
+      {lastUpdated ? (
+        <Text style={styles.updated}>Updated {formatTime(lastUpdated)}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function formatTime(d) {
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  return `${h}:${m}`;
 }
 
 const styles = StyleSheet.create({
@@ -191,7 +237,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  title: { fontSize: 18, fontWeight: '600', marginBottom: 8 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  title: { fontSize: 18, fontWeight: '600', marginBottom: 8, flexGrow: 1 },
+  refreshBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#1f7aed',
+  },
+  refreshText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  updated: { marginLeft: 'auto', fontSize: 11, color: '#666' },
+
   sub: { fontSize: 13, color: '#666' },
   err: { fontSize: 13, color: '#b00020' },
   hint: { marginTop: 6, fontSize: 12, color: '#666' },
@@ -213,7 +269,6 @@ const styles = StyleSheet.create({
   },
   barLabel: { marginTop: 6, fontSize: 12, color: '#333' },
   barValue: { fontSize: 11, color: '#666' },
-
   footer: { marginTop: 10, flexDirection: 'row', justifyContent: 'space-between' },
   footerText: { fontSize: 12, color: '#666' },
 });
