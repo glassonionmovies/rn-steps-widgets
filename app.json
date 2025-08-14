@@ -14,7 +14,18 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.rnstepswidgets"
+      "bundleIdentifier": "com.anonymous.rnstepswidgets",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "This app reads your step count from Health to show recent activity.",
+        "NSHealthUpdateUsageDescription": "This app may write health data you authorize (not used now).",
+        "NSLocalNetworkUsageDescription": "Allow connection to the local development server on your network.",
+        "NSBonjourServices": [
+          "_http._tcp",
+          "_https._tcp",
+          "_expo-development-server._tcp",
+          "_metro._tcp"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
