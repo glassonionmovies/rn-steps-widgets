@@ -1,6 +1,7 @@
 import React from 'react';
 import { SafeAreaView, View, Text, StyleSheet } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import WidgetTwoHealth from './components/WidgetTwoHealth';
 
 // Hardcoded last 7 days of expected step counts (in thousands)
 const DATA = [10, 8, 8, 8, 9, 7, 7];
@@ -37,10 +38,7 @@ export default function App() {
       <BarChart data={DATA} labels={LABELS} />
 
       {/* Widget 2: Placeholder */}
-      <View style={styles.placeholder}>
-        <Text style={styles.widgetTitle}>Widget 2</Text>
-        <Text style={styles.placeholderText}>Coming soon…</Text>
-      </View>
+      <WidgetTwoHealth />
     </SafeAreaView>
   );
 }

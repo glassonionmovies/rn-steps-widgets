@@ -1716,6 +1716,8 @@ PODS:
     - React-logger (= 0.79.0)
     - React-perflogger (= 0.79.0)
     - React-utils (= 0.79.0)
+  - RNAppleHealthKit (1.7.0):
+    - React
   - SocketRocket (0.7.1)
   - Yoga (0.0.0)
 
@@ -1798,6 +1800,7 @@ DEPENDENCIES:
   - ReactAppDependencyProvider (from `build/generated/ios`)
   - ReactCodegen (from `build/generated/ios`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
+  - RNAppleHealthKit (from `../node_modules/react-native-health`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -1958,6 +1961,8 @@ EXTERNAL SOURCES:
     :path: build/generated/ios
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
+  RNAppleHealthKit:
+    :path: "../node_modules/react-native-health"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -1965,12 +1970,12 @@ SPEC CHECKSUMS:
   boost: 7e761d76ca2ce687f7cc98e698152abd03a18f90
   DoubleConversion: cb417026b2400c8f53ae97020b2be961b59470cb
   EXConstants: 98bcf0f22b820f9b28f9fee55ff2daededadd2f8
-  Expo: a40d525c930dd1c8a158e082756ee071955baccb
+  Expo: b527631da3b11e085809e877b845f9e6cdd68f9c
   ExpoAsset: ef06e880126c375f580d4923fdd1cdf4ee6ee7d6
   ExpoFileSystem: 7f92f7be2f5c5ed40a7c9efc8fa30821181d9d63
   ExpoFont: cf508bc2e6b70871e05386d71cab927c8524cc8e
   ExpoKeepAwake: bf0811570c8da182bfb879169437d4de298376e7
-  ExpoModulesCore: 00a1b5c73248465bd0b93f59f8538c4573dac579
+  ExpoModulesCore: f55e7872391bae03ee5547c83152c81750d89508
   fast_float: 06eeec4fe712a76acc9376682e4808b05ce978b6
   FBLazyVector: 758fbc1be5fb7ce700b23160033d82e574c2b6b7
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
@@ -2013,14 +2018,14 @@ SPEC CHECKSUMS:
   React-performancetimeline: 7e299c5bfb9a3863a44962b316c79192303cd9d1
   React-RCTActionSheet: 9ce0ed65693f0faa48e7ab0f60828251af7564f5
   React-RCTAnimation: 9c5761782eb9da8ba9ea657be5458aaf81aa3bb8
-  React-RCTAppDelegate: 08e9342912d168c26fe2634a3bb4ec6679401f50
+  React-RCTAppDelegate: c588868e5a3501944d0972ae78e74f992be7179a
   React-RCTBlob: 04a057106b154afecf59ab7ab1e9316573871143
-  React-RCTFabric: 88115fab3853839559b441a43961c42e7a8f8b49
-  React-RCTFBReactNativeSpec: 4d328d57cebd94cb6520832933d1236fa7386f09
+  React-RCTFabric: d12cd633486b6efb999ea71804b77a27a1829570
+  React-RCTFBReactNativeSpec: bf907f670485d9bba3ea2ce601a9634d81c5bc65
   React-RCTImage: b51ffeb7b6e76e774df4912b605b49eaa75cd3bf
   React-RCTLinking: 9ea3c2c6e280fb5a7a9f243a41bbf654bc865bb9
   React-RCTNetwork: 3cc24a5bb1f672e6fb9a324f4412e21eee7ae8db
-  React-RCTRuntime: 52325cee74d3a9657e7f70f8bdba3614efa0d503
+  React-RCTRuntime: a91a669398f6e8aee6ec6f31fde086a78362aa26
   React-RCTSettings: d0bc51287173ce2ab6b05a101be9a906eafa56a5
   React-RCTText: 0a40448638481b8c16f23e73ffd8bff8dcab7ce4
   React-RCTVibration: a001257cac1a37da35625622968725d6d4bde519
@@ -2038,6 +2043,7 @@ SPEC CHECKSUMS:
   ReactAppDependencyProvider: 7f5052913dd72a0e84ca95973f9f8bc97f2c5b95
   ReactCodegen: 16700ce5938fd79c1ff4c5b5735f10830f2e6bd3
   ReactCommon: 1257efa9d0b07517d8b79bb4055eaefac1204807
+  RNAppleHealthKit: 86ef7ab70f762b802f5c5289372de360cca701f9
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Yoga: 9773f1327b258fa449988c2e42fbb7cbdf655d96
 
