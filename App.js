@@ -10,7 +10,7 @@ function BarChart({ data, labels }) {
   const max = Math.max(...data, 1);
   return (
     <View style={styles.chartContainer}>
-      <Text style={styles.widgetTitle}>Expected Steps (Last 7 Days)</Text>
+      <Text style={styles.widgetTitle}>Expected Steps (Last s Days)</Text>
       <View style={styles.chart}>
         {data.map((value, idx) => {
           const heightPct = (value / max) * 100;
