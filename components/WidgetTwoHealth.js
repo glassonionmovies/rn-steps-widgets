@@ -50,13 +50,17 @@ export default function WidgetTwoHealth() {
     };
 
     if (hasIsAvailable) {
-      AppleHealthKit.isAvailable((avail) => {
-        console.log('[W2H] isAvailable ->', avail);
-        if (!avail) {
-          setState(s => ({ ...s, error: 'Health not available on this device.' }));
-        } else {
-          continueInit();
+      AppleHealthKit.isAvailable((err, available) => {
+        console.log('[W2H] isAvailable err ->', err, 'available ->', available);
+        if (err) {
+          setState(s => ({ ...s, error: String(err) }));
+          return;
         }
+        if (available === false) {
+          setState(s => ({ ...s, error: 'Health not available on this device.' }));
+          return;
+        }
+        continueInit(); // proceed to initHealthKit
       });
     } else if (hasIsHealthDataAvailable) {
       const avail = AppleHealthKit.isHealthDataAvailable();
