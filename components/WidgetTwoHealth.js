@@ -227,15 +227,8 @@ function formatTime(d) {
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 12,
+    backgroundColor: 'transparent', // let Card provide the surface
     padding: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   title: { fontSize: 18, fontWeight: '600', marginBottom: 8, flexGrow: 1 },
@@ -255,7 +248,7 @@ const styles = StyleSheet.create({
   chart: {
     height: 160,
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'flex-end', 
     justifyContent: 'space-between',
     paddingHorizontal: 6,
     marginTop: 6,

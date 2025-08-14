@@ -154,15 +154,8 @@ export default function WidgetThreeWorkout({ initialExercise = 'Back Squat' }) {
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderRadius: 12,
+    backgroundColor: 'transparent',
     padding: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
   },
   header: { flexDirection: 'row', alignItems: 'center' },
   title: { fontSize: 18, fontWeight: '600', flex: 1 },
