@@ -1,30 +1,63 @@
-import React from 'react';
-import Svg, { G, Path } from 'react-native-svg';
+// components/DonutChart.js
+import React, {useMemo, useState} from 'react';
+import {View, Text} from 'react-native';
+import * as Haptics from 'expo-haptics';
+import {PieChart} from 'react-native-gifted-charts';
+import {palette} from '../theme';
 
-export default function DonutChart({ segments }) {
-  // segments: [{value, color}]
-  const size=220, cx=size/2, cy=size/2, r=80, thick=30;
-  const total = segments.reduce((a,b)=>a+b.value,0) || 1;
-  let start=0;
-  const toXY = (ang)=>[cx + Math.cos(ang)*r, cy + Math.sin(ang)*r];
+export default function DonutChart({
+  segments = [],             // [{ value, color }]
+  radius = 96,
+  innerRadius = 64,
+  centerLabel = 'Total',
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+
+  const data = useMemo(
+    () =>
+      segments.map((s, i) => ({
+        value: s.value,
+        color: s.color,
+        text: '',
+        shiftX: i === activeIndex ? 6 : 0,
+        shiftY: i === activeIndex ? 6 : 0,
+      })),
+    [segments, activeIndex]
+  );
+
+  const total = useMemo(
+    () => segments.reduce((acc, s) => acc + (s.value || 0), 0),
+    [segments]
+  );
+  const activeVal = segments[activeIndex]?.value ?? 0;
 
   return (
-    <Svg width="100%" height={size} viewBox={`0 0 ${size} ${size}`}>
-      <G>
-        {segments.map((s,idx)=>{
-          const a0 = (start/total)*2*Math.PI - Math.PI/2;
-          const a1 = ((start+s.value)/total)*2*Math.PI - Math.PI/2;
-          start += s.value;
-          const [x0,y0]=toXY(a0), [x1,y1]=toXY(a1);
-          const large = (a1-a0)>Math.PI ? 1 : 0;
-          const outer = `M ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
-          const [ix0,iy0]=[cx + Math.cos(a0)*(r-thick), cy + Math.sin(a0)*(r-thick)];
-          const [ix1,iy1]=[cx + Math.cos(a1)*(r-thick), cy + Math.sin(a1)*(r-thick)];
-          const inner = `L ${ix1} ${iy1} A ${r-thick} ${r-thick} 0 ${large} 0 ${ix0} ${iy0} Z`;
-          return <Path key={idx} d={outer+inner} fill={s.color}/>;
-        })}
-      </G>
-    </Svg>
+    <View style={{alignItems: 'center', justifyContent: 'center'}}>
+      <PieChart
+        data={data}
+        donut
+        radius={radius}
+        innerRadius={innerRadius}
+        sectionAutoFocus
+        focusOnPress
+        strokeColor="#fff"
+        strokeWidth={2}
+        showGradient
+        innerCircleColor="#fff"
+        onPress={(_, index) => {
+          setActiveIndex(index);
+          Haptics.selectionAsync();
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{position: 'absolute', alignItems: 'center', justifyContent: 'center'}}>
+        <Text style={{fontSize: 12, opacity: 0.6}}>{centerLabel}</Text>
+        <Text style={{fontSize: 22, fontWeight: '800', color: palette.text}}>
+          {activeVal}
+        </Text>
+        <Text style={{fontSize: 12, opacity: 0.6}}>of {total}</Text>
+      </View>
+    </View>
   );
 }
-
