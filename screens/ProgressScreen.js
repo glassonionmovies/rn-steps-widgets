@@ -1,50 +1,92 @@
-import React from 'react';
-import {ScrollView, Text, StyleSheet, View} from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { ScrollView, Text, StyleSheet, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import Card from '../components/ui/Card';
 import LineChart from '../components/LineChart';
 import DonutChart from '../components/DonutChart';
-import {palette, spacing, layout} from '../theme';
+import WorkoutHistoryList from '../components/workout/WorkoutHistoryList';
+import { getAllWorkouts } from '../store/workoutStore';
+import { palette, spacing, layout } from '../theme';
+
+const GROUP_COLORS = {
+  Chest: '#ef4444',
+  Back: '#3b82f6',
+  Legs: '#22c55e',
+  Shoulders: '#f59e0b',
+  Arms: '#a855f7',
+  Core: '#10b981',
+  Other: '#9ca3af',
+};
+
+function aggregateWeekly(workouts) {
+  // Sun..Sat counts
+  const arr = [0, 0, 0, 0, 0, 0, 0];
+  workouts.forEach((w) => {
+    const d = new Date(w.startedAt || Date.now());
+    arr[d.getDay()] += 1;
+  });
+  return arr;
+}
+
+function aggregateMuscle(workouts) {
+  const tally = {};
+  (workouts || []).forEach((w) =>
+    (w.blocks || []).forEach((b) => {
+      const g = b.exercise?.muscleGroup || 'Other';
+      const vol = (b.sets || []).reduce(
+        (s, set) => s + (Number(set.weight) || 0) * (Number(set.reps) || 0),
+        0
+      );
+      tally[g] = (tally[g] || 0) + vol;
+    })
+  );
+  return Object.entries(tally).map(([g, value]) => ({
+    value: Math.round(value),
+    color: GROUP_COLORS[g] || GROUP_COLORS.Other,
+  }));
+}
 
 export default function ProgressScreen() {
-  const weekly = [2, 1, 3, 1, 2, 4, 2];
-  const muscle = [
-    {value: 30, color: '#ef4444'}, // chest
-    {value: 20, color: '#3b82f6'}, // back
-    {value: 35, color: '#22c55e'}, // legs
-    {value: 10, color: '#f59e0b'}, // shoulders
-    {value: 5,  color: '#a855f7'}, // arms
-  ];
+  const [weekly, setWeekly] = useState([0, 0, 0, 0, 0, 0, 0]);
+  const [muscle, setMuscle] = useState([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      (async () => {
+        const all = await getAllWorkouts();
+        if (!mounted) return;
+        setWeekly(aggregateWeekly(all));
+        setMuscle(aggregateMuscle(all));
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, [])
+  );
 
   return (
     <ScrollView
-      style={{flex: 1, backgroundColor: palette.bg}}
-      contentContainerStyle={{
-        paddingHorizontal: layout.screenHMargin,
-        paddingTop: spacing(2),
-        paddingBottom: spacing(4),
-        rowGap: spacing(2), // consistent gaps
-      }}>
-      <Text style={styles.title}>Progress</Text>
-      <Text style={styles.subtitle}>Track your fitness journey</Text>
+      style={{ flex: 1, backgroundColor: palette.bg }}
+      contentContainerStyle={{ padding: layout.screenHMargin, gap: spacing(2) }}
+    >
+      <WorkoutHistoryList />
 
-      <Card>
-        <Text style={styles.sectionTitle}>Weekly Progress</Text>
+      <Card style={{ padding: spacing(2) }}>
+        <Text style={styles.sectionTitle}>Weekly Trend</Text>
         <LineChart points={weekly} />
       </Card>
 
-      <Card>
-        <Text style={styles.sectionTitle}>Muscle Group Distribution</Text>
-        <DonutChart segments={muscle} centerLabel="Focus" />
+      <Card style={{ padding: spacing(2) }}>
+        <Text style={styles.sectionTitle}>Muscle Group Split</Text>
+        <DonutChart segments={muscle} centerLabel="Volume" />
       </Card>
 
-      {/* cushioned bottom */}
-      <View style={{height: spacing(1)}} />
+      <View style={{ height: spacing(1) }} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  title: {color: palette.accent2, fontSize: 34, fontWeight: '900'},
-  subtitle: {color: palette.sub, marginTop: 4, fontSize: 16},
-  sectionTitle: {color: palette.text, fontSize: 20, fontWeight: '800', marginBottom: spacing(1)},
+  sectionTitle: { color: palette.text, fontSize: 20, fontWeight: '800', marginBottom: spacing(1) },
 });
