@@ -34,3 +34,19 @@ export function computeSummary(w){
     exercises: (w.blocks||[]).length,
   };
 }
+
+// --- Add to store/workoutStore.js ---
+export async function getPrevSetsForExercise(exerciseId, beforeTimestamp, excludeWorkoutId) {
+  const all = await getAllWorkouts();
+  // pick most-recent workout BEFORE the current one (and not the same id)
+  const candidates = (all || [])
+    .filter(w => (excludeWorkoutId ? w.id !== excludeWorkoutId : true))
+    .filter(w => (beforeTimestamp ? (w.startedAt || 0) < beforeTimestamp : true))
+    .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+
+  for (const w of candidates) {
+    const block = (w.blocks || []).find(b => b.exercise?.id === exerciseId);
+    if (block) return block.sets || [];
+  }
+  return [];
+}

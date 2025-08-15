@@ -1,36 +1,70 @@
 // components/ui/Card.js
 import React from 'react';
-import { View, StyleSheet, Platform, StyleSheet as RNStyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+
+function wrapStringsDeep(node) {
+  // Recursively convert any string/number child (at any depth) into <Text>
+  if (node == null || typeof node === 'boolean') return null;
+
+  if (typeof node === 'string' || typeof node === 'number') {
+    return <Text>{String(node)}</Text>;
+  }
+
+  if (Array.isArray(node)) {
+    return node.map((c, i) => <React.Fragment key={i}>{wrapStringsDeep(c)}</React.Fragment>);
+  }
+
+  if (React.isValidElement(node)) {
+    const { children, ...rest } = node.props || {};
+    // Only dive if there are children; preserve other props
+    if (children !== undefined) {
+      return React.cloneElement(node, rest, wrapStringsDeep(children));
+    }
+    return node;
+  }
+
+  // Functions, objects, etc. are left as-is
+  return node;
+}
 
 export default function Card({ children, style, noShadow = false }) {
-  // Flatten and strip backgroundColor so callers can't remove the solid bg on the shadowed view
-  const flat = RNStyleSheet.flatten(style) || {};
-  const { backgroundColor: _ignoreBg, ...rest } = flat;
+  const flat = StyleSheet.flatten(style) || {};
+
+  // Ensure a solid background (fixes "cannot calculate shadow efficiently" warning)
+  const bg =
+    flat.backgroundColor && flat.backgroundColor !== 'transparent'
+      ? flat.backgroundColor
+      : '#fff';
+
+  const safeChildren = wrapStringsDeep(children);
 
   return (
-    <View style={[styles.outer, !noShadow && styles.shadow]}>
-      <View style={[styles.inner, rest]}>{children}</View>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: bg },
+        flat,
+        !noShadow && styles.shadow,
+      ]}
+    >
+      {safeChildren}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Shadow lives on THIS view and it ALWAYS has a solid bg
-  outer: {
-    backgroundColor: '#fff',   // solid color = efficient shadow path
-    borderRadius: 12,
-    // (No padding here—put padding on inner so the shadowed view's bg stays solid)
+  card: {
+    borderRadius: 16,
+    // callers can control padding via `style`
   },
-  // Content wrapper: gets user styles (minus backgroundColor)
-  inner: {
-    borderRadius: 12,
-    padding: 12,
-  },
-  shadow: {
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    ...(Platform.OS === 'android' ? { elevation: 4 } : null),
-  },
+  shadow: Platform.select({
+    ios: {
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    android: { elevation: 2 },
+    default: {},
+  }),
 });
