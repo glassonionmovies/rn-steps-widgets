@@ -11,7 +11,13 @@ function isCompletedSet(s) {
   return w > 0 && r > 0 && !!s?.completedAt; // only sets marked done
 }
 
-export default function WorkoutSessionSummary({ blocks = [], units = 'lb', onFinish }) {
+export default function WorkoutSessionSummary({
+  blocks = [],
+  units = 'lb',
+  onFinish,
+  showFinish = true,   // control visibility of the button
+  showTitle = true,    // NEW: control visibility of the heading
+}) {
   const unitLabel = units === 'lb' ? 'lbs' : 'kg';
 
   const live = useMemo(() => {
@@ -46,9 +52,11 @@ export default function WorkoutSessionSummary({ blocks = [], units = 'lb', onFin
 
   return (
     <Card style={{ padding: spacing(2) }}>
-      <Text style={{ color: palette.text, fontSize: 20, fontWeight: '800', marginBottom: 8 }}>
-        Workout Session Summary
-      </Text>
+      {showTitle && (
+        <Text style={{ color: palette.text, fontSize: 20, fontWeight: '800', marginBottom: 8 }}>
+          Workout Session Summary
+        </Text>
+      )}
 
       <View style={{ marginBottom: spacing(1) }}>
         <Text style={{ color: palette.text, fontWeight: '800' }}>
@@ -77,8 +85,12 @@ export default function WorkoutSessionSummary({ blocks = [], units = 'lb', onFin
         )}
       </View>
 
-      <View style={{ height: spacing(1.5) }} />
-      <GradientButton title="Finish & Save" onPress={onFinish} />
+      {showFinish && typeof onFinish === 'function' && (
+        <>
+          <View style={{ height: spacing(1.5) }} />
+          <GradientButton title="Finish & Save" onPress={onFinish} />
+        </>
+      )}
     </Card>
   );
 }

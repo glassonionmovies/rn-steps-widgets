@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, AppState } from 'react-native';
 import AppleHealthKit from 'react-native-health';
-import { writeSteps7 } from '../utils/healthSteps'; // shared cache for Progress screen
+import { writeSteps7 } from '../utils/healthSteps'; // adjust relative path if needed
 
 // helpers
 const dkey = (d) => {
@@ -14,7 +14,7 @@ const dkey = (d) => {
 const dayStart = (d) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
 const dayEnd   = (d) => { const x = new Date(d); x.setHours(23,59,59,999); return x; };
 
-export default function WidgetTwoHealth() {
+export default function WidgetTwoHealth({ hideRefresh = true }) {
   const [state, setState] = useState({
     ready: false,
     error: null,
@@ -84,7 +84,7 @@ export default function WidgetTwoHealth() {
     }
   }, []);
 
-  // ---- Fetch steps (can be called by button or timer)
+  // ---- Fetch steps (can be called by auto-timer)
   const fetchSteps = useCallback((firstLoad = false) => {
     setState((s) => ({ ...s, loading: true, error: firstLoad ? s.error : null }));
 
@@ -103,7 +103,7 @@ export default function WidgetTwoHealth() {
       return;
     }
 
-    AppleHealthKit.getDailyStepCountSamples(opts, async (err, results = []) => {
+    AppleHealthKit.getDailyStepCountSamples(opts, (err, results = []) => {
       if (err) {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
         return;
@@ -122,8 +122,8 @@ export default function WidgetTwoHealth() {
         value: Math.round(map[key] || 0),
       }));
 
-      // publish the exact 7-day array for other screens (Progress)
-      try { await writeSteps7(days.map(d => d.value)); } catch {}
+      // optional: persist so Progress screen can read and plot steps
+      try { writeSteps7(days.map(d => d.value)); } catch {}
 
       setState({
         ready: true,
@@ -140,7 +140,6 @@ export default function WidgetTwoHealth() {
     let timer = setInterval(() => fetchSteps(false), 2 * 60 * 60 * 1000); // 2h
     const sub = AppState.addEventListener('change', (st) => {
       if (st === 'active') {
-        // refresh when app returns to foreground
         fetchSteps(false);
         if (!timer) timer = setInterval(() => fetchSteps(false), 2 * 60 * 60 * 1000);
       } else {
@@ -154,12 +153,6 @@ export default function WidgetTwoHealth() {
     };
   }, [fetchSteps]);
 
-  // ---- Keep shared cache in sync if days change for any reason
-  useEffect(() => {
-    if (!state.ready || !state.days?.length) return;
-    writeSteps7(state.days.map(d => Number(d.value) || 0)).catch(() => {});
-  }, [state.ready, state.days]);
-
   const max = Math.max(1, ...state.days.map((d) => d.value));
   const total = state.days.reduce((a, b) => a + b.value, 0);
 
@@ -167,7 +160,7 @@ export default function WidgetTwoHealth() {
   if (state.error) {
     return (
       <View style={styles.card}>
-        <Header onRefresh={() => fetchSteps(false)} loading={state.loading} />
+        <Header hideRefresh={hideRefresh} loading={state.loading} />
         <Text style={styles.err}>Error: {state.error}</Text>
         <Text style={styles.hint}>Settings → Health → Data Access → enable “Steps” for this app.</Text>
       </View>
@@ -176,7 +169,7 @@ export default function WidgetTwoHealth() {
 
   return (
     <View style={styles.card}>
-      <Header onRefresh={() => fetchSteps(false)} loading={state.loading} lastUpdated={state.lastUpdated} />
+      <Header hideRefresh={hideRefresh} loading={state.loading} lastUpdated={state.lastUpdated} />
 
       {!state.ready ? (
         <Text style={styles.sub}>Loading…</Text>
@@ -208,20 +201,24 @@ export default function WidgetTwoHealth() {
   );
 }
 
-// Small header with Refresh button + last updated
-function Header({ onRefresh, loading, lastUpdated }) {
+// Small header; with hideable Refresh button
+function Header({ hideRefresh, onRefresh, loading, lastUpdated }) {
   return (
     <View style={styles.headerRow}>
       <Text style={styles.title}>Steps (Last 7 Days)</Text>
-      <TouchableOpacity
-        onPress={onRefresh}
-        disabled={loading}
-        style={[styles.refreshBtn, loading && { opacity: 0.6 }]}
-        accessibilityRole="button"
-        accessibilityLabel="Refresh steps"
-      >
-        <Text style={styles.refreshText}>{loading ? 'Refreshing…' : 'Refresh'}</Text>
-      </TouchableOpacity>
+
+      {!hideRefresh && (
+        <TouchableOpacity
+          onPress={onRefresh}
+          disabled={loading}
+          style={[styles.refreshBtn, loading && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh steps"
+        >
+          <Text style={styles.refreshText}>{loading ? 'Refreshing…' : 'Refresh'}</Text>
+        </TouchableOpacity>
+      )}
+
       {lastUpdated ? (
         <Text style={styles.updated}>Updated {formatTime(lastUpdated)}</Text>
       ) : null}
@@ -237,7 +234,7 @@ function formatTime(d) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'transparent', // let Card provide the surface
+    backgroundColor: 'transparent',
     padding: 12,
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },

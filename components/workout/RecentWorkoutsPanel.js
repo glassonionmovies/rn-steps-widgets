@@ -1,65 +1,99 @@
 // components/workout/RecentWorkoutsPanel.js
-import React, { useCallback, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Card from '../ui/Card';
+import GradientButton from '../ui/GradientButton';
+import WorkoutSessionSummary from './WorkoutSessionSummary';
 import { palette, spacing } from '../../theme';
-import { getAllWorkouts, computeSummary } from '../../store/workoutStore';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { getAllWorkouts } from '../../store/workoutStore';
 
-export default function RecentWorkoutsPanel() {
-  const [items, setItems] = useState([]);
+// Prefer helper if present (nested tabs); fall back to manual nested nav
+let goTrackWorkout;
+try {
+  ({ goTrackWorkout } = require('../../navigation/routes'));
+} catch (_) {
+  goTrackWorkout = null;
+}
+
+export default function RecentWorkoutsPanel({ workouts: propWorkouts }) {
   const navigation = useNavigation();
+  const [internal, setInternal] = useState(null); // null = not loaded
 
-  useFocusEffect(useCallback(() => {
-    let mounted = true;
+  // Self-load if parent didn't pass workouts
+  useEffect(() => {
+    let active = true;
     (async () => {
+      if (propWorkouts && propWorkouts.length) return;
       const all = await getAllWorkouts();
-      const sorted = (all || []).sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
-      const last10 = sorted.slice(0, 10).map(w => ({ w, sum: computeSummary(w) }));
-      if (mounted) setItems(last10);
+      if (active) setInternal(all || []);
     })();
-    return () => { mounted = false; };
-  }, []));
+    return () => { active = false; };
+  }, [propWorkouts]);
+
+  const data = useMemo(() => {
+    if (propWorkouts && propWorkouts.length) return propWorkouts;
+    if (internal && internal.length) return internal;
+    return [];
+  }, [propWorkouts, internal]);
+
+  const last10 = useMemo(
+    () => [...data].sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0)).slice(0, 10),
+    [data]
+  );
+
+  const openWorkout = (id) => {
+    if (goTrackWorkout) {
+      goTrackWorkout(navigation, id ? { workoutId: id } : undefined);
+    } else {
+      navigation.navigate('Train', { screen: 'TrackWorkout', params: id ? { workoutId: id } : undefined });
+    }
+  };
 
   return (
     <Card style={{ padding: spacing(2) }}>
-      <Text style={{ color: palette.text, fontSize: 20, fontWeight: '800', marginBottom: 8 }}>
+      <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800', marginBottom: spacing(1) }}>
         Recent Workouts
       </Text>
-      {items.length === 0 ? (
-        <Text style={{ color: palette.sub }}>No workouts saved yet.</Text>
+
+      {last10.length === 0 ? (
+        <Text style={{ color: palette.sub }}>No workouts yet.</Text>
       ) : (
-        <View>
-          {items.map(({ w, sum }, idx) => {
-            const d = new Date(w.startedAt || Date.now());
-            const date = d.toLocaleDateString();
-            const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        <View style={{ gap: 12 }}>
+          {last10.map((w) => {
+            const dt = new Date(w.startedAt || Date.now());
+            const when = dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
             return (
               <Pressable
                 key={w.id}
-                onPress={() => navigation.navigate('TrackWorkout', { workoutId: w.id })}
-                style={{ paddingVertical: 10 }}
+                onPress={() => openWorkout(w.id)}
+                style={{
+                  paddingVertical: 10,
+                  borderBottomWidth: 1,
+                  borderBottomColor: 'rgba(0,0,0,0.06)',
+                }}
               >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <View>
-                    <Text style={{ color: palette.text, fontSize: 15, fontWeight: '700' }}>{date}</Text>
-                    <Text style={{ color: palette.sub, fontSize: 12 }}>{time}</Text>
-                  </View>
-                  <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={{ color: palette.text, fontSize: 13, fontWeight: '700' }}>
-                      {sum.totalSets} sets • {Math.round(sum.totalVolume)} {w.units || 'lb'}
-                    </Text>
-                    <Text style={{ color: palette.sub, fontSize: 12 }}>
-                      {sum.exercises} exercises • {sum.durationMin} min
-                    </Text>
-                  </View>
+                {/* Date heading */}
+                <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>{when}</Text>
+
+                {/* Same summary UI, but hide title & actions */}
+                <View pointerEvents="none">
+                  <WorkoutSessionSummary
+                    blocks={w.blocks || []}
+                    units={w.units || 'lb'}
+                    showFinish={false}
+                    showTitle={false}
+                  />
                 </View>
-                {idx < items.length - 1 && <View style={{ height: 1, backgroundColor: '#e5e7eb', opacity: 0.5, marginTop: 10 }} />}
               </Pressable>
             );
           })}
         </View>
       )}
+
+      <View style={{ height: spacing(1) }} />
+      <GradientButton title="Start New Workout" onPress={() => openWorkout(null)} />
     </Card>
   );
 }

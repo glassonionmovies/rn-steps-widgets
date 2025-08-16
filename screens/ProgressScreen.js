@@ -1,14 +1,17 @@
 // screens/ProgressScreen.js
 import React, { useMemo, useCallback, useState } from 'react';
 import { ScrollView, Text, StyleSheet, View, Alert, Pressable } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import Card from '../components/ui/Card';
 import DonutChart from '../components/DonutChart';
 import MultiLineChart from '../components/charts/MultiLineChart';
 import RecentWorkoutsPanel from '../components/workout/RecentWorkoutsPanel';
+import GradientButton from '../components/ui/GradientButton';
 import { palette, spacing, layout } from '../theme';
-import { useFocusEffect } from '@react-navigation/native';
 import { getAllWorkouts } from '../store/workoutStore';
-import { readSteps7 } from '../utils/healthSteps';
+import { goMuscleInsights } from '../navigation/routes';
 
 const GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Abs'];
 const GROUP_COLORS = {
@@ -19,6 +22,7 @@ const GROUP_COLORS = {
   Legs: '#22c55e',
   Abs: '#10b981',
 };
+const GROUP_ICONS = { Chest:'💪', Back:'🧷', Shoulders:'🧱', Arms:'🦾', Legs:'🦵', Abs:'🧘‍♀️' };
 
 function startOfDay(ts) {
   const d = new Date(ts);
@@ -62,9 +66,11 @@ function RangeChips({ value, onChange, options = [7, 30, 90] }) {
 }
 
 export default function ProgressScreen() {
+  const navigation = useNavigation();
   const [workouts, setWorkouts] = useState([]);
   const [steps7, setSteps7] = useState([0, 0, 0, 0, 0, 0, 0]);
   const [splitDays, setSplitDays] = useState(90); // date-range picker controls Muscle Split
+  const [selectedGroup, setSelectedGroup] = useState('Chest'); // for Muscle Group Performance card
 
   // Load data when focused
   useFocusEffect(
@@ -74,11 +80,17 @@ export default function ProgressScreen() {
         const all = await getAllWorkouts();
         if (mounted) setWorkouts(all || []);
 
-        // Steps last 7 days from shared cache written by WidgetTwoHealth
-        if (mounted) {
-          const s7 = await readSteps7();
-          setSteps7(s7);
-        }
+        // Steps last 7 days: try common keys used by health widgets
+        try {
+          const s = (await AsyncStorage.getItem('WidgetTwoHealth:steps7')) ||
+                    (await AsyncStorage.getItem('health:steps7'));
+          if (s && mounted) {
+            const parsed = JSON.parse(s);
+            if (Array.isArray(parsed) && parsed.length >= 7) {
+              setSteps7(parsed.slice(-7).map(n => Number(n) || 0));
+            }
+          }
+        } catch {}
       })();
       return () => { mounted = false; };
     }, [])
@@ -105,6 +117,8 @@ export default function ProgressScreen() {
     for (let i = 6; i >= 0; i--) arr.push(Math.round(map.get(daysAgo(i)) || 0));
     return arr;
   }, [workouts]);
+
+  const steps7k = useMemo(() => steps7.map(n => Number(n) / 1000), [steps7]);
 
   // --- Muscle Split (selected range): avg volume per *exercise occurrence* ---
   const split = useMemo(() => {
@@ -172,21 +186,11 @@ export default function ProgressScreen() {
         <MultiLineChart
           labels={weekLabels}
           yMode="dual"
-          showValues
           series={[
-            {
-              label: 'Volume (lbs)',
-              color: '#2563eb',
-              points: volume7,
-              format: (n) => Math.round(n).toLocaleString(),
-            },
-            {
-              label: 'Steps',
-              color: '#ef4444',
-              points: steps7,
-              format: (n) => Math.round(n).toLocaleString(),
-            },
+            { label: 'Volume (lbs)', color: '#2563eb', points: volume7 },
+            { label: 'Steps (k)',     color: '#ef4444', points: steps7k, format: (n) => n.toFixed(1) },
           ]}
+          showValues
         />
         {steps7.every(n => n === 0) && (
           <Text style={{ color: palette.sub, marginTop: 6, fontSize: 12 }}>
@@ -229,8 +233,44 @@ export default function ProgressScreen() {
         </View>
       </Card>
 
+      {/* 2.5) Muscle Group Performance — moved here from Home */}
+      <Card style={{ padding: spacing(2) }}>
+        <Text style={styles.sectionTitle}>Muscle Group Performance</Text>
+        <Text style={{ color: palette.sub, marginBottom: spacing(1) }}>
+          Deep insights, PRs, and trends by muscle group
+        </Text>
+
+        {/* Group chips */}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {GROUPS.map((g) => {
+            const active = g === selectedGroup;
+            return (
+              <Pressable
+                key={g}
+                onPress={() => setSelectedGroup(g)}
+                style={{
+                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1,
+                  borderColor: active ? '#6366f1' : '#e5e7eb',
+                  backgroundColor: active ? '#eef2ff' : '#fff',
+                }}
+              >
+                <Text style={{ fontWeight: '800', color: active ? '#4f46e5' : palette.text }}>
+                  {(GROUP_ICONS[g] || '') + ' ' + g}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={{ height: spacing(1) }} />
+        <GradientButton
+          title={`Open ${selectedGroup} Insights`}
+          onPress={() => goMuscleInsights(navigation, selectedGroup)}
+        />
+      </Card>
+
       {/* 3) Recent Workouts (date + session summary) */}
-      <RecentWorkoutsPanel />
+      <RecentWorkoutsPanel workouts={workouts} />
     </ScrollView>
   );
 }
