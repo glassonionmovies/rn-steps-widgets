@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, AppState } from 'react-native';
 import AppleHealthKit from 'react-native-health';
+import { writeSteps7 } from '../utils/healthSteps'; // shared cache for Progress screen
 
 // helpers
 const dkey = (d) => {
@@ -102,7 +103,7 @@ export default function WidgetTwoHealth() {
       return;
     }
 
-    AppleHealthKit.getDailyStepCountSamples(opts, (err, results = []) => {
+    AppleHealthKit.getDailyStepCountSamples(opts, async (err, results = []) => {
       if (err) {
         setState((s) => ({ ...s, loading: false, error: String(err) }));
         return;
@@ -120,6 +121,9 @@ export default function WidgetTwoHealth() {
         label,
         value: Math.round(map[key] || 0),
       }));
+
+      // publish the exact 7-day array for other screens (Progress)
+      try { await writeSteps7(days.map(d => d.value)); } catch {}
 
       setState({
         ready: true,
@@ -149,6 +153,12 @@ export default function WidgetTwoHealth() {
       if (timer) clearInterval(timer);
     };
   }, [fetchSteps]);
+
+  // ---- Keep shared cache in sync if days change for any reason
+  useEffect(() => {
+    if (!state.ready || !state.days?.length) return;
+    writeSteps7(state.days.map(d => Number(d.value) || 0)).catch(() => {});
+  }, [state.ready, state.days]);
 
   const max = Math.max(1, ...state.days.map((d) => d.value));
   const total = state.days.reduce((a, b) => a + b.value, 0);
@@ -248,7 +258,7 @@ const styles = StyleSheet.create({
   chart: {
     height: 160,
     flexDirection: 'row',
-    alignItems: 'flex-end', 
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 6,
     marginTop: 6,

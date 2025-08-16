@@ -1,5 +1,7 @@
 // screens/TrackWorkoutScreen.js
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import WorkoutSessionSummary from '../components/workout/WorkoutSessionSummary';
+
 import {
   SafeAreaView,
   ScrollView,
@@ -212,11 +214,13 @@ export default function TrackWorkoutScreen() {
           </Card>
 
           <Card style={{ padding: spacing(2) }}>
-            <Text style={styles.title}>Session</Text>
-            <Text style={{ opacity: 0.7, marginBottom: spacing(1) }}>
-              Total volume: {total.volume.toFixed(0)} {units}
-            </Text>
-            <GradientButton title="Finish & Save" onPress={finish} />
+           {/* Session summary */}
+<WorkoutSessionSummary
+  blocks={blocks}
+  units={units}
+  onFinish={finish}
+/>
+
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -1,88 +1,236 @@
-import React, { useState, useCallback } from 'react';
-import { ScrollView, Text, StyleSheet, View } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+// screens/ProgressScreen.js
+import React, { useMemo, useCallback, useState } from 'react';
+import { ScrollView, Text, StyleSheet, View, Alert, Pressable } from 'react-native';
 import Card from '../components/ui/Card';
-import LineChart from '../components/LineChart';
 import DonutChart from '../components/DonutChart';
-import WorkoutHistoryList from '../components/workout/WorkoutHistoryList';
-import { getAllWorkouts } from '../store/workoutStore';
+import MultiLineChart from '../components/charts/MultiLineChart';
+import RecentWorkoutsPanel from '../components/workout/RecentWorkoutsPanel';
 import { palette, spacing, layout } from '../theme';
+import { useFocusEffect } from '@react-navigation/native';
+import { getAllWorkouts } from '../store/workoutStore';
+import { readSteps7 } from '../utils/healthSteps';
 
+const GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Abs'];
 const GROUP_COLORS = {
   Chest: '#ef4444',
   Back: '#3b82f6',
-  Legs: '#22c55e',
   Shoulders: '#f59e0b',
   Arms: '#a855f7',
-  Core: '#10b981',
-  Other: '#9ca3af',
+  Legs: '#22c55e',
+  Abs: '#10b981',
 };
 
-function aggregateWeekly(workouts) {
-  // Sun..Sat counts
-  const arr = [0, 0, 0, 0, 0, 0, 0];
-  workouts.forEach((w) => {
-    const d = new Date(w.startedAt || Date.now());
-    arr[d.getDay()] += 1;
-  });
-  return arr;
+function startOfDay(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
 }
+function daysAgo(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+const isValidSet = (s) => (Number(s?.weight) || 0) > 0 && (Number(s?.reps) || 0) > 0;
 
-function aggregateMuscle(workouts) {
-  const tally = {};
-  (workouts || []).forEach((w) =>
-    (w.blocks || []).forEach((b) => {
-      const g = b.exercise?.muscleGroup || 'Other';
-      const vol = (b.sets || []).reduce(
-        (s, set) => s + (Number(set.weight) || 0) * (Number(set.reps) || 0),
-        0
-      );
-      tally[g] = (tally[g] || 0) + vol;
-    })
+function RangeChips({ value, onChange, options = [7, 30, 90] }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      {options.map((d) => {
+        const active = d === value;
+        return (
+          <Pressable
+            key={d}
+            onPress={() => onChange?.(d)}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: active ? '#6366f1' : '#e5e7eb',
+              backgroundColor: active ? '#eef2ff' : '#fff',
+            }}
+          >
+            <Text style={{ color: active ? '#4f46e5' : palette.text, fontWeight: active ? '800' : '600' }}>
+              {d}D
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
-  return Object.entries(tally).map(([g, value]) => ({
-    value: Math.round(value),
-    color: GROUP_COLORS[g] || GROUP_COLORS.Other,
-  }));
 }
 
 export default function ProgressScreen() {
-  const [weekly, setWeekly] = useState([0, 0, 0, 0, 0, 0, 0]);
-  const [muscle, setMuscle] = useState([]);
+  const [workouts, setWorkouts] = useState([]);
+  const [steps7, setSteps7] = useState([0, 0, 0, 0, 0, 0, 0]);
+  const [splitDays, setSplitDays] = useState(90); // date-range picker controls Muscle Split
 
+  // Load data when focused
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
       (async () => {
         const all = await getAllWorkouts();
-        if (!mounted) return;
-        setWeekly(aggregateWeekly(all));
-        setMuscle(aggregateMuscle(all));
+        if (mounted) setWorkouts(all || []);
+
+        // Steps last 7 days from shared cache written by WidgetTwoHealth
+        if (mounted) {
+          const s7 = await readSteps7();
+          setSteps7(s7);
+        }
       })();
-      return () => {
-        mounted = false;
-      };
+      return () => { mounted = false; };
     }, [])
   );
+
+  // --- Weekly Trend (7 days) ---
+  const weekLabels = useMemo(() => {
+    const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const arr = [];
+    for (let i = 6; i >= 0; i--) arr.push(names[new Date(daysAgo(i)).getDay()]);
+    return arr;
+  }, []);
+
+  const volume7 = useMemo(() => {
+    const map = new Map();
+    workouts.forEach(w => {
+      const d = startOfDay(w.startedAt || Date.now());
+      const vol = (w.blocks || []).reduce((acc, b) =>
+        acc + (b.sets || []).reduce((s, x) => s + (Number(x.weight) || 0) * (Number(x.reps) || 0), 0)
+      , 0);
+      map.set(d, (map.get(d) || 0) + vol);
+    });
+    const arr = [];
+    for (let i = 6; i >= 0; i--) arr.push(Math.round(map.get(daysAgo(i)) || 0));
+    return arr;
+  }, [workouts]);
+
+  // --- Muscle Split (selected range): avg volume per *exercise occurrence* ---
+  const split = useMemo(() => {
+    const cutoff = Date.now() - splitDays * 24 * 60 * 60 * 1000;
+
+    // Totals for the average (per exercise occurrence)
+    const totalVol = Object.fromEntries(GROUPS.map(g => [g, 0]));
+    const exerciseCount = Object.fromEntries(GROUPS.map(g => [g, 0]));
+
+    // Workouts count (for the legend tap)
+    const workoutCount = Object.fromEntries(GROUPS.map(g => [g, 0]));
+
+    (workouts || [])
+      .filter(w => (w.startedAt || 0) >= cutoff)
+      .forEach(w => {
+        const hitThisWorkout = new Set(); // track if a group appeared in this workout (for workoutCount)
+        (w.blocks || []).forEach(b => {
+          const g = b.exercise?.muscleGroup;
+          if (!GROUPS.includes(g)) return;
+
+          // Compute volume for this *exercise occurrence* (block)
+          const blockVol = (b.sets || []).filter(isValidSet)
+            .reduce((s, x) => s + (Number(x.weight) || 0) * (Number(x.reps) || 0), 0);
+
+          if (blockVol > 0) {
+            totalVol[g] += blockVol;
+            exerciseCount[g] += 1;   // <-- count occurrences
+            hitThisWorkout.add(g);   // <-- remember that this workout hit g
+          }
+        });
+        hitThisWorkout.forEach(g => { workoutCount[g] += 1; });
+      });
+
+    const segments = GROUPS.map(g => {
+      const countOcc = exerciseCount[g] || 0;
+      const avg = countOcc ? totalVol[g] / countOcc : 0;
+      return {
+        group: g,
+        value: Math.round(avg),     // for donut
+        color: GROUP_COLORS[g],
+        countOcc,
+        workouts: workoutCount[g] || 0,
+      };
+    });
+
+    return { segments, workoutCount, exerciseCount };
+  }, [workouts, splitDays]);
+
+  const handleLegendPress = (g) => {
+    const item = split.segments.find(s => s.group === g);
+    Alert.alert(
+      g,
+      `${item.workouts} workout${item.workouts === 1 ? '' : 's'} in last ${splitDays} days`
+    );
+  };
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.bg }}
       contentContainerStyle={{ padding: layout.screenHMargin, gap: spacing(2) }}
     >
-      <WorkoutHistoryList />
-
+      {/* 1) Weekly Trend (fixed 7 days) */}
       <Card style={{ padding: spacing(2) }}>
         <Text style={styles.sectionTitle}>Weekly Trend</Text>
-        <LineChart points={weekly} />
+        <MultiLineChart
+          labels={weekLabels}
+          yMode="dual"
+          showValues
+          series={[
+            {
+              label: 'Volume (lbs)',
+              color: '#2563eb',
+              points: volume7,
+              format: (n) => Math.round(n).toLocaleString(),
+            },
+            {
+              label: 'Steps',
+              color: '#ef4444',
+              points: steps7,
+              format: (n) => Math.round(n).toLocaleString(),
+            },
+          ]}
+        />
+        {steps7.every(n => n === 0) && (
+          <Text style={{ color: palette.sub, marginTop: 6, fontSize: 12 }}>
+            Connect Health to see steps here.
+          </Text>
+        )}
       </Card>
 
+      {/* 2) Muscle Group Split (range picker) */}
       <Card style={{ padding: spacing(2) }}>
-        <Text style={styles.sectionTitle}>Muscle Group Split</Text>
-        <DonutChart segments={muscle} centerLabel="Volume" />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing(1) }}>
+          <Text style={styles.sectionTitle}>Muscle Group Split</Text>
+          <RangeChips value={splitDays} onChange={setSplitDays} options={[7, 30, 90]} />
+        </View>
+
+        <DonutChart
+          segments={split.segments.map(s => ({ value: s.value, color: s.color }))}
+          centerLabel="Avg / exercise"
+        />
+
+        {/* Legend with press -> workout count */}
+        <View style={{ marginTop: spacing(1), gap: 8 }}>
+          {split.segments.map(s => (
+            <View
+              key={s.group}
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: s.color }} />
+                <Text style={{ color: palette.text, fontWeight: '700' }}>{s.group}</Text>
+              </View>
+              <Text
+                onPress={() => handleLegendPress(s.group)}
+                style={{ color: palette.sub }}
+              >
+                {s.value} avg • tap for workout count
+              </Text>
+            </View>
+          ))}
+        </View>
       </Card>
 
-      <View style={{ height: spacing(1) }} />
+      {/* 3) Recent Workouts (date + session summary) */}
+      <RecentWorkoutsPanel />
     </ScrollView>
   );
 }
