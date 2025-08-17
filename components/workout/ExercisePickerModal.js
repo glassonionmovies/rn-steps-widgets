@@ -1,184 +1,156 @@
 // components/workout/ExercisePickerModal.js
-import React, { useMemo, useState } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TextInput,
-  SectionList,
-  Pressable,
-} from 'react-native';
-import Card from '../ui/Card';
+import React from 'react';
+import { Modal, View, Text, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { palette, spacing } from '../../theme';
 
-// ---- Your catalog (grouped) ----
-const CATALOG = [
+const GROUPS = [
   {
     id: 1,
     name: 'Chest',
     exercises: [
-      { name: 'Bench Press', icon: '🏋️‍♂️' },
-      { name: 'Incline Dumbbell Press', icon: '💪' },
-      { name: 'Push-ups', icon: '🤸‍♂️' },
-      { name: 'Dumbbell Flyes', icon: '👐' },
-      { name: 'Dips (Chest Version)', icon: '🤸‍♂️' },
+      { name: 'Bench Press', icon: '🏋️‍♂️', equipment: 'Barbell' },
+      { name: 'Incline Dumbbell Press', icon: '💪', equipment: 'Dumbbell' },
+      { name: 'Push-ups', icon: '🤸‍♂️', equipment: 'Bodyweight' },
+      { name: 'Dumbbell Flyes', icon: '👐', equipment: 'Dumbbell' },
+      { name: 'Dips (Chest Version)', icon: '🤸‍♂️', equipment: 'Bodyweight' },
     ],
   },
   {
     id: 2,
     name: 'Back',
     exercises: [
-      { name: 'Deadlift', icon: '🏋️‍♂️' },
-      { name: 'Pull-ups', icon: '🤸‍♂️' },
-      { name: 'Bent-over Row', icon: '🏋️‍♂️' },
-      { name: 'Lat Pulldown', icon: '👇' },
-      { name: 'Seated Cable Row', icon: '↔️' },
+      { name: 'Deadlift', icon: '🏋️‍♂️', equipment: 'Barbell' },
+      { name: 'Pull-ups', icon: '🤸‍♂️', equipment: 'Bodyweight' },
+      { name: 'Bent-over Row', icon: '🏋️‍♂️', equipment: 'Barbell' },
+      { name: 'Lat Pulldown', icon: '👇', equipment: 'Bodyweight' },   // non-barbell (cable)
+      { name: 'Seated Cable Row', icon: '↔️', equipment: 'Bodyweight' }, // non-barbell (cable)
     ],
   },
   {
     id: 3,
     name: 'Shoulders',
     exercises: [
-      { name: 'Barbell Overhead Press (Standing)', icon: '🏋️‍♂️' },
-      { name: 'Seated Dumbbell Shoulder Press', icon: '💪' },
-      { name: 'Barbell Overhead Press (Seated)', icon: '🏋️‍♂️' },
-      { name: 'Dumbbell Lateral Raise', icon: '👐' },
-      { name: 'Face Pulls', icon: '🪢' },
-      { name: 'Arnold Press', icon: '💪' },
+      { name: 'Barbell Overhead Press (Standing)', icon: '🏋️‍♂️', equipment: 'Barbell' },
+      { name: 'Seated Dumbbell Shoulder Press', icon: '💪', equipment: 'Dumbbell' },
+      { name: 'Barbell Overhead Press (Seated)', icon: '🏋️‍♂️', equipment: 'Barbell' },
+      { name: 'Dumbbell Lateral Raise', icon: '👐', equipment: 'Dumbbell' },
+      { name: 'Face Pulls', icon: '🪢', equipment: 'Bodyweight' }, // cable
+      { name: 'Arnold Press', icon: '💪', equipment: 'Dumbbell' },
     ],
   },
   {
     id: 4,
     name: 'Arms',
     exercises: [
-      { name: 'Barbell Curl', icon: '💪' },
-      { name: 'Dumbbell Hammer Curl', icon: '🔨' },
-      { name: 'Tricep Pushdown', icon: '👇' },
-      { name: 'Skull Crushers', icon: '💀' },
-      { name: 'Close-Grip Bench Press', icon: '🏋️‍♂️' },
+      { name: 'Barbell Curl', icon: '💪', equipment: 'Barbell' },
+      { name: 'Dumbbell Hammer Curl', icon: '🔨', equipment: 'Dumbbell' },
+      { name: 'Tricep Pushdown', icon: '👇', equipment: 'Bodyweight' }, // cable
+      { name: 'Skull Crushers', icon: '💀', equipment: 'Barbell' },
+      { name: 'Close-Grip Bench Press', icon: '🏋️‍♂️', equipment: 'Barbell' },
     ],
   },
   {
     id: 5,
     name: 'Legs',
     exercises: [
-      { name: 'Barbell Squat', icon: '🏋️‍♀️' },
-      { name: 'Leg Press', icon: '🦵' },
-      { name: 'Romanian Deadlift', icon: '🏋️‍♂️' },
-      { name: 'Lunges', icon: '🚶‍♂️' },
-      { name: 'Calf Raises', icon: '📈' },
+      { name: 'Barbell Squat', icon: '🏋️‍♀️', equipment: 'Barbell' },
+      { name: 'Leg Press', icon: '🦵', equipment: 'Bodyweight' }, // machine
+      { name: 'Romanian Deadlift', icon: '🏋️‍♂️', equipment: 'Barbell' },
+      { name: 'Lunges', icon: '🚶‍♂️', equipment: 'Dumbbell' }, // common variant
+      { name: 'Calf Raises', icon: '📈', equipment: 'Dumbbell' }, // can vary, keep non-barbell
     ],
   },
   {
     id: 6,
     name: 'Abs',
     exercises: [
-      { name: 'Plank', icon: '🧘‍♀️' },
-      { name: 'Leg Raises', icon: '🦵' },
-      { name: 'Crunches', icon: '💪' },
-      { name: 'Russian Twist', icon: '🔄' },
-      { name: 'Hanging Knee Raises', icon: '🤸‍♂️' },
+      { name: 'Plank', icon: '🧘‍♀️', equipment: 'Bodyweight' },
+      { name: 'Leg Raises', icon: '🦵', equipment: 'Bodyweight' },
+      { name: 'Crunches', icon: '💪', equipment: 'Bodyweight' },
+      { name: 'Russian Twist', icon: '🔄', equipment: 'Bodyweight' },
+      { name: 'Hanging Knee Raises', icon: '🤸‍♂️', equipment: 'Bodyweight' },
     ],
   },
 ];
 
-// ---- Helpers ----
-function slugify(s) {
-  return String(s)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
-
 export default function ExercisePickerModal({ visible, onClose, onPick }) {
-  const [q, setQ] = useState('');
-
-  const sections = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const base = CATALOG.map(group => {
-      let data = group.exercises.map(ex => ({
-        id: `${slugify(group.name)}__${slugify(ex.name)}`,
-        name: ex.name,
-        icon: ex.icon,
-        muscleGroup: group.name, // <-- used by TrackWorkout
-        _search: `${group.name} ${ex.name}`.toLowerCase(),
-      }));
-      if (needle) data = data.filter(x => x._search.includes(needle));
-      return { title: group.name, data };
-    });
-    // If searching, drop empty sections
-    return needle ? base.filter(s => s.data.length > 0) : base;
-  }, [q]);
+  const pick = (group, ex) => {
+    // Provide a stable id for exercise based on group + name
+    const id = `${group.id}:${ex.name}`;
+    onPick?.({ id, name: ex.name, icon: ex.icon, muscleGroup: group.name, equipment: ex.equipment });
+    onClose?.();
+  };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, padding: spacing(2), backgroundColor: '#fff' }}>
-        <TextInput
-          placeholder="Search exercises or muscle group"
-          value={q}
-          onChangeText={setQ}
-          style={{
-            borderWidth: 1,
-            borderColor: '#e5e7eb',
-            borderRadius: 12,
-            paddingHorizontal: 12,
-            paddingVertical: 10,
-            marginBottom: spacing(1.5),
-          }}
-          autoFocus
-          returnKeyType="search"
-        />
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.backdrop}>
+        <View style={styles.sheet}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Add Exercise</Text>
+            <Pressable onPress={onClose} hitSlop={10}><Text style={{ color: palette.sub, fontWeight: '700' }}>Close</Text></Pressable>
+          </View>
 
-        {/* SectionList is fine (we're not inside a ScrollView) */}
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item.id}
-          renderSectionHeader={({ section }) => (
-            <Text
-              style={{
-                color: palette.sub,
-                fontSize: 12,
-                textTransform: 'uppercase',
-                marginTop: spacing(1),
-                marginBottom: spacing(0.5),
-              }}
-            >
-              {section.title}
-            </Text>
-          )}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => {
-                onPick?.({
-                  id: item.id,
-                  name: item.name,
-                  muscleGroup: item.muscleGroup,
-                  icon: item.icon,
-                });
-                onClose?.();
-              }}
-            >
-              <Card style={{ padding: spacing(1.5), marginBottom: spacing(1) }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Text style={{ fontSize: 18 }}>{item.icon}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: '600', color: palette.text }}>
-                      {item.name}
-                    </Text>
-                    <Text style={{ fontSize: 12, color: palette.sub }}>{item.muscleGroup}</Text>
-                  </View>
+          <ScrollView contentContainerStyle={{ paddingBottom: spacing(2) }}>
+            {GROUPS.map((g) => (
+              <View key={g.id} style={{ marginBottom: spacing(1.5) }}>
+                <Text style={styles.groupTitle}>{g.name}</Text>
+                <View style={{ marginTop: 6 }}>
+                  {g.exercises.map((ex) => (
+                    <Pressable
+                      key={ex.name}
+                      onPress={() => pick(g, ex)}
+                      style={styles.row}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {!!ex.icon && <Text style={{ fontSize: 16 }}>{ex.icon}</Text>}
+                        <Text style={styles.rowText}>{ex.name}</Text>
+                      </View>
+
+                      <View style={styles.equipChip}>
+                        <Text style={styles.equipChipText}>{ex.equipment}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
                 </View>
-              </Card>
-            </Pressable>
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: 4 }} />}
-          stickySectionHeadersEnabled={false}
-        />
-
-        <Pressable onPress={onClose} style={{ alignSelf: 'center', marginTop: spacing(1) }}>
-          <Text style={{ fontSize: 16 }}>Cancel</Text>
-        </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
 }
+
+const styles = StyleSheet.create({
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+  sheet: {
+    maxHeight: '85%',
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: spacing(2),
+  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing(1) },
+  title: { color: palette.text, fontSize: 18, fontWeight: '900' },
+
+  groupTitle: { color: palette.text, fontSize: 14, fontWeight: '800', opacity: 0.8 },
+  row: {
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rowText: { color: palette.text, fontWeight: '700' },
+
+  equipChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#F3F4F6',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(0,0,0,0.08)',
+  },
+  equipChipText: { color: palette.sub, fontWeight: '700', fontSize: 12 },
+});

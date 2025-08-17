@@ -1,222 +1,164 @@
 // components/charts/MultiLineChart.js
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text } from 'react-native';
-import Svg, {
-  Polyline,
-  Line as SvgLine,
-  Text as SvgText,
-  Circle,
-} from 'react-native-svg';
 
-/**
- * Props:
- *  - labels: string[]  // x-axis labels (same length as points)
- *  - series: Array<{
- *      label: string,
- *      color?: string,
- *      points: number[],
- *      format?: (n:number)=>string,  // optional per-series formatter
- *    }>
- *  - height?: number
- *  - padding?: number
- *  - yMode?: 'joint'|'dual'  // 'dual' = separate Y scales for series[0] & series[1]
- *  - showValues?: boolean     // draw value labels near each point
- */
-export default function MultiLineChart({
-  series = [],
-  labels = [],
-  height = 160,
-  padding = 16,
-  yMode = 'joint',
-  showValues = true,
-}) {
-  const width = 320; // viewBox width; scales to container width
-  const innerW = width - padding * 2;
-  const innerH = height - padding * 2;
+// --- helpers ---
+const isNum = (n) => Number.isFinite(n);
+const fmtK = (n) => `${Math.round((Number(n) || 0) / 1000)}k`;
 
-  const calc = useMemo(() => {
-    const clamp1 = (n) => Math.max(1, Number.isFinite(n) ? n : 0);
+function niceAxis(series) {
+  const all = series.flatMap(s => (s.points || []).filter(isNum));
+  const max = Math.max(1, ...all, 1);
+  const niceMax = Math.ceil(max / 1000) * 1000 || 1000;
+  const step = Math.max(1000, Math.ceil(niceMax / 3 / 1000) * 1000);
+  const ticks = [0, step, step * 2, step * 3];
+  return { max: step * 3, ticks };
+}
 
-    // Max across all points (joint mode)
-    const allVals = series.flatMap((s) => (s.points || []).map((v) => Number(v) || 0));
-    const jointMax = clamp1(Math.max(0, ...allVals));
-
-    // Per-series max (dual mode)
-    const perMax = series.map((s) =>
-      clamp1(Math.max(0, ...((s.points || []).map((v) => Number(v) || 0))))
-    );
-
-    const toXY = (i, v, sIdx) => {
-      const x =
-        padding + innerW * (labels.length <= 1 ? 0 : i / (labels.length - 1));
-      const maxFor = yMode === 'dual' ? perMax[sIdx] || 1 : jointMax;
-      const ratio = (Number(v) || 0) / maxFor;
-      const y = padding + innerH - innerH * ratio;
-      return { x, y };
-    };
-
-    const paths = series.map((s, sIdx) => {
-      const pts = (s.points || []).map((v, i) => toXY(i, v, sIdx));
-      const pointsStr = pts.map(({ x, y }) => `${x},${y}`).join(' ');
-      return { ...s, pts, pointsStr };
-    });
-
-    const gridY = 4;
-    const leftMax = yMode === 'dual' ? perMax[0] || 1 : jointMax;
-    const rightMax = yMode === 'dual' ? perMax[1] || leftMax : leftMax;
-
-    const leftTicks = Array.from({ length: gridY + 1 }, (_, i) => {
-      const y = padding + (innerH * i) / gridY;
-      const val = Math.round(leftMax * (1 - i / gridY));
-      return { y, val };
-    });
-
-    const rightTicks =
-      yMode === 'dual' && series.length > 1
-        ? Array.from({ length: gridY + 1 }, (_, i) => {
-            const y = padding + (innerH * i) / gridY;
-            const val = Math.round(rightMax * (1 - i / gridY));
-            return { y, val };
-          })
-        : [];
-
-    return { paths, leftTicks, rightTicks };
-  }, [series, labels.length, padding, innerW, innerH, yMode]);
-
-  const defaultFormat = (n) => {
-    if (!Number.isFinite(n)) return '0';
-    // show full numbers so you can verify values
-    return Math.round(n).toString();
+// draw a segment using a rotated view
+function segStyle(x1, y1, x2, y2, color, thickness = 2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (!isNum(len) || len <= 0) return { display: 'none' };
+  const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+  // extend slightly so it tucks under dots
+  const ext = 6;
+  const ux = dx / len, uy = dy / len;
+  const startX = x1 - ux * (ext / 2);
+  const startY = y1 - uy * (ext / 2);
+  return {
+    position: 'absolute',
+    left: startX,
+    top: startY,
+    width: len + ext,
+    height: thickness,
+    backgroundColor: color,
+    transform: [{ rotateZ: `${ang}deg` }],
+    borderRadius: thickness / 2,
   };
+}
+
+export default function MultiLineChart({
+  labels = [],
+  series = [],           // [{ label, color, points }]
+  showYAxis = true,
+}) {
+  const [{ w, h }, setSize] = useState({ w: 0, h: 0 });
+
+  // align lengths to avoid stray lines
+  const aligned = useMemo(() => {
+    const nLabels = labels.length;
+    return series.map(s => {
+      const pts = Array.isArray(s.points) ? s.points.slice() : [];
+      const n = Math.min(nLabels, pts.length);
+      return {
+        ...s,
+        n,
+        points: pts.slice(0, n).map(v => {
+          const nV = Number(v);
+          return Number.isFinite(nV) ? nV : null; // keep 0, null invalid
+        }),
+      };
+    });
+  }, [series, labels]);
+
+  const axis = useMemo(() => niceAxis(aligned), [aligned]);
+
+  const AXIS_W = showYAxis ? 34 : 0;
+  const BOT_H = 18;
+  const innerW = Math.max(0, w - AXIS_W - 8);
+  const innerH = Math.max(0, h - BOT_H - 8);
 
   return (
-    <View style={{ width: '100%' }}>
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-        {/* grid */}
-        {calc.leftTicks.map((t, idx) => (
-          <SvgLine
-            key={`g${idx}`}
-            x1={padding}
-            y1={t.y}
-            x2={padding + innerW}
-            y2={t.y}
-            stroke="#e5e7eb"
-            strokeWidth="1"
-          />
-        ))}
-
-        {/* left ticks */}
-        {calc.leftTicks.map((t, idx) => (
-          <SvgText
-            key={`l${idx}`}
-            x={padding - 6}
-            y={t.y + 3}
-            fontSize="10"
-            fill="#6b7280"
-            textAnchor="end"
-          >
-            {t.val}
-          </SvgText>
-        ))}
-
-        {/* right ticks (dual mode) */}
-        {calc.rightTicks.map((t, idx) => (
-          <SvgText
-            key={`r${idx}`}
-            x={padding + innerW + 6}
-            y={t.y + 3}
-            fontSize="10"
-            fill="#6b7280"
-            textAnchor="start"
-          >
-            {t.val}
-          </SvgText>
-        ))}
-
-        {/* lines */}
-        {calc.paths.map((s, idx) => (
-          <Polyline
-            key={`p${idx}`}
-            points={s.pointsStr}
-            fill="none"
-            stroke={s.color || '#2563eb'}
-            strokeWidth="2.5"
-          />
-        ))}
-
-        {/* end dots */}
-        {calc.paths.map((s, idx) => {
-          const last = s.pts[s.pts.length - 1];
-          if (!last) return null;
-          return <Circle key={`d${idx}`} cx={last.x} cy={last.y} r="3.5" fill={s.color || '#2563eb'} />;
-        })}
-
-        {/* x labels */}
-        {labels.map((lab, i) => {
-          const x = padding + innerW * (labels.length <= 1 ? 0 : i / (labels.length - 1));
-          const y = padding + innerH + 14;
+    <View
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize({ w: width, h: height });
+      }}
+      style={{ height: 220, width: '100%' }}
+    >
+      {/* grid */}
+      <View style={{ position: 'absolute', left: AXIS_W, top: 0, right: 0, bottom: BOT_H }}>
+        {axis.ticks.map((t, idx) => {
+          const y = innerH - (innerH * t) / axis.max;
           return (
-            <SvgText key={`x${i}`} x={x} y={y} fontSize="10" fill="#6b7280" textAnchor="middle">
-              {lab}
-            </SvgText>
+            <View
+              key={`g-${idx}`}
+              style={{ position: 'absolute', left: 0, right: 0, top: y, height: 1, backgroundColor: '#E5E7EB' }}
+            />
           );
         })}
+      </View>
 
-        {/* value labels at points */}
-        {showValues &&
-          calc.paths.map((s, sIdx) => {
-            const fmt = s.format || defaultFormat;
-            // offset labels to avoid overlapping between series
-            const dy = sIdx === 0 ? -8 : 12;
-            return s.pts.map(({ x, y }, i) => {
-              const raw = s.points?.[i] ?? 0;
-              const label = fmt(raw);
-              // outline text for readability: draw stroke then fill
-              return (
-                <React.Fragment key={`val-${sIdx}-${i}`}>
-                  <SvgText
-                    x={x}
-                    y={y + dy}
-                    fontSize="10"
-                    stroke="#ffffff"
-                    strokeWidth="2.5"
-                    fill="#000000"
-                    textAnchor="middle"
-                  >
-                    {label}
-                  </SvgText>
-                  <SvgText
-                    x={x}
-                    y={y + dy}
-                    fontSize="10"
-                    fill={s.color || '#111827'}
-                    textAnchor="middle"
-                  >
-                    {label}
-                  </SvgText>
-                </React.Fragment>
-              );
-            });
+      {/* y-axis labels */}
+      {showYAxis && (
+        <View style={{ position: 'absolute', left: 0, top: 0, width: AXIS_W, bottom: BOT_H }}>
+          {axis.ticks.map((t, idx) => {
+            const y = innerH - (innerH * t) / axis.max;
+            return (
+              <Text
+                key={`yl-${idx}`}
+                style={{ position: 'absolute', right: 4, top: y - 7, fontSize: 10, color: '#6B7280' }}
+              >
+                {fmtK(t)}
+              </Text>
+            );
           })}
-      </Svg>
+        </View>
+      )}
 
-      {/* legend */}
-      <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
-        {series.map((s, i) => (
-          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                backgroundColor: s.color || '#2563eb',
-              }}
-            />
-            <Text style={{ fontSize: 12, color: '#374151' }}>
-              {s.label}{yMode === 'dual' && i === 1 ? ' (right)' : ''}
-            </Text>
-          </View>
-        ))}
+      {/* lines & dots */}
+      <View style={{ position: 'absolute', left: AXIS_W, right: 0, top: 0, bottom: BOT_H }}>
+        {aligned.map((s, si) => {
+          const n = s.n;
+          if (n <= 0) return null;
+          const xStep = n > 1 ? innerW / (n - 1) : innerW;
+          const color = s.color || '#2563eb';
+
+          // coords
+          const pts = Array.from({ length: n }).map((_, i) => {
+            const v = s.points[i];
+            const valid = v !== null;
+            const x = (n <= 1) ? innerW / 2 : i * xStep;
+            const y = valid ? innerH - (v / axis.max) * innerH : null;
+            return { x, y, valid };
+          });
+
+          return (
+            <View key={`series-${si}`} style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+              {/* segments between consecutive valid points */}
+              {pts.map((p, i) => {
+                if (i === 0) return null;
+                const a = pts[i - 1], b = pts[i];
+                if (!(a.valid && b.valid)) return null;
+                return <View key={`seg-${si}-${i}`} style={segStyle(a.x, a.y, b.x, b.y, color, 2)} />;
+              })}
+              {/* dots (slightly larger to cover segment ends) */}
+              {pts.map((p, i) =>
+                p.valid ? (
+                  <View
+                    key={`dot-${si}-${i}`}
+                    style={{
+                      position: 'absolute',
+                      left: p.x - 4, top: p.y - 4,
+                      width: 8, height: 8, borderRadius: 4,
+                      backgroundColor: color,
+                    }}
+                  />
+                ) : null
+              )}
+            </View>
+          );
+        })}
+      </View>
+
+      {/* x labels */}
+      <View style={{ position: 'absolute', left: AXIS_W, right: 0, bottom: 0, height: BOT_H, flexDirection: 'row', justifyContent: 'space-between' }}>
+        {labels
+          .slice(0, Math.max(0, ...aligned.map(s => s.n)))
+          .map((lab, i) => (
+            <Text key={`xl-${i}`} style={{ fontSize: 10, color: '#6B7280' }}>{lab}</Text>
+          ))}
       </View>
     </View>
   );

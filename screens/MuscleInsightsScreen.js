@@ -1,35 +1,61 @@
 // screens/MuscleInsightsScreen.js
-import React, { useMemo, useCallback, useState } from 'react';
-import { ScrollView, View, Text, Pressable, StyleSheet, Alert } from 'react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { useRoute, useNavigation } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+
 import Card from '../components/ui/Card';
-import MultiLineChart from '../components/charts/MultiLineChart';
-import ContributionCalendar from '../components/workout/ContributionCalendar';
-import KPICard from '../components/ui/KPICard';
 import { palette, spacing, layout } from '../theme';
 import { getAllWorkouts } from '../store/workoutStore';
-import coach from '../utils/coach';
 
+// Reusable widgets
+import VolumeReportCard from '../components/insights/VolumeReportCard';
+import ConsistencyHeatmapCard from '../components/insights/ConsistencyHeatmapCard';
+import RepAIAnalysisWidget from '../components/insights/RepAIAnalysisWidget';
+import TopExercisesWidget from '../components/insights/TopExercisesWidget';
+
+// ------------ Constants & helpers ------------
 const GROUPS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Abs'];
-const GROUP_ICONS = { Chest: '💪', Back: '🧷', Shoulders: '🧱', Arms: '🦾', Legs: '🦵', Abs: '🧘‍♀️' };
-const GROUP_COLORS = { Chest: '#ef4444', Back: '#3b82f6', Shoulders: '#f59e0b', Arms: '#a855f7', Legs: '#22c55e', Abs: '#10b981' };
 
-function RangeChips({ value, onChange, options = [30, 90, 180, 'All'] }) {
+const GROUP_META = {
+  Chest:     { color: '#ef4444', emoji: '💪' },
+  Back:      { color: '#3b82f6', emoji: '🏋️‍♂️' },
+  Shoulders: { color: '#f59e0b', emoji: '🛡️' },
+  Arms:      { color: '#a855f7', emoji: '🦾' },
+  Legs:      { color: '#22c55e', emoji: '🦵' },
+  Abs:       { color: '#10b981', emoji: '🧘‍♂️' },
+};
+
+const dayMs = 24 * 60 * 60 * 1000;
+const epley = (w, r) => (Number(w)||0) * (1 + (Number(r)||0) / 30);
+function startOfDay(ts) { const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime(); }
+
+// ------------ Small UI bits (local only) ------------
+function GroupChips({ value, onChange }) {
   return (
-    <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-      {options.map((opt) => {
-        const active = opt === value;
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      {GROUPS.map((g) => {
+        const active = g === value;
+        const meta = GROUP_META[g];
         return (
           <Pressable
-            key={String(opt)}
-            onPress={() => onChange?.(opt)}
+            key={g}
+            onPress={() => onChange?.(g)}
             style={{
-              paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1,
-              borderColor: active ? '#6366f1' : '#e5e7eb', backgroundColor: active ? '#eef2ff' : '#fff',
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: active ? meta.color : '#e5e7eb',
+              backgroundColor: active ? `${meta.color}15` : '#fff',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
             }}
           >
-            <Text style={{ color: active ? '#4f46e5' : palette.text, fontWeight: active ? '800' : '600' }}>
-              {typeof opt === 'number' ? `Last ${opt}D` : 'All Time'}
+            <Text style={{ fontSize: 14 }}>{meta.emoji}</Text>
+            <Text style={{ color: active ? meta.color : palette.text, fontWeight: active ? '800' : '600' }}>
+              {g}
             </Text>
           </Pressable>
         );
@@ -38,187 +64,248 @@ function RangeChips({ value, onChange, options = [30, 90, 180, 'All'] }) {
   );
 }
 
+function RangeChips({ value, onChange, options = [30, 60, 90] }) {
+  return (
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      {options.map((d) => {
+        const active = d === value;
+        return (
+          <Pressable
+            key={d}
+            onPress={() => onChange?.(d)}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: active ? '#6366f1' : '#e5e7eb',
+              backgroundColor: active ? '#eef2ff' : '#fff',
+            }}
+          >
+            <Text style={{ color: active ? '#4f46e5' : palette.text, fontWeight: active ? '800' : '600' }}>
+              {d} Days
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ACWRPill({ value }) {
+  let label = '—';
+  let bg = 'rgba(107,114,128,0.12)'; // gray
+  let fg = '#374151';
+  if (value != null) {
+    if (value < 0.8)      { label = value.toFixed(2); bg = 'rgba(245,158,11,0.12)'; fg = '#b45309'; } // low
+    else if (value <= 1.3){ label = value.toFixed(2); bg = 'rgba(16,185,129,0.12)'; fg = '#065f46'; } // ok
+    else if (value <= 1.5){ label = value.toFixed(2); bg = 'rgba(245,158,11,0.12)'; fg = '#b45309'; } // highish
+    else                  { label = value.toFixed(2); bg = 'rgba(239,68,68,0.12)';  fg = '#991b1b'; } // very high
+  }
+  return (
+    <View style={{ paddingHorizontal: 10, paddingVertical: 4, backgroundColor: bg, borderRadius: 999 }}>
+      <Text style={{ color: fg, fontWeight: '800', fontSize: 12 }}>ACWR {label}</Text>
+    </View>
+  );
+}
+
+// ------------ Screen ------------
 export default function MuscleInsightsScreen() {
-  const nav = useNavigation();
   const route = useRoute();
-  const initialGroup = route?.params?.group && GROUPS.includes(route.params.group) ? route.params.group : 'Chest';
+  const navigation = useNavigation();
 
-  const [workouts, setWorkouts] = useState([]);
+  const initialGroup =
+    (route?.params?.group && GROUPS.includes(route.params.group)) ? route.params.group : 'Chest';
+
   const [group, setGroup] = useState(initialGroup);
-  const [range, setRange] = useState(90);
+  const [rangeDays, setRangeDays] = useState(90);
+  const [selectorsOpen, setSelectorsOpen] = useState(false);
 
-  useFocusEffect(useCallback(() => {
-    let mounted = true;
+  // KPIs for the header/tiles + inputs for ConsistencyHeatmapCard/RepAIAnalysisWidget
+  const [kpi, setKpi] = useState({
+    totalVolume: 0,
+    sessions: 0,
+    acwr: null,
+    prs: 0,
+    byDay: new Map(),
+  });
+
+  const accent = GROUP_META[group].color;
+
+  // Sync header title with emoji
+  useEffect(() => {
+    navigation.setOptions?.({ title: `${GROUP_META[group].emoji}  ${group} Insights` });
+  }, [navigation, group]);
+
+  // Compute KPIs from workouts (screen-specific; charts are encapsulated in widgets)
+  useEffect(() => {
+    let active = true;
     (async () => {
       const all = await getAllWorkouts();
-      if (mounted) setWorkouts(all || []);
+      const end = startOfDay(Date.now());
+      const start = end - (rangeDays - 1) * dayMs;
+      const prevStart = start - rangeDays * dayMs;
+
+      const byDay = new Map();
+      const bestNow = new Map();
+      const bestPrev = new Map();
+      let totalVolume = 0;
+      let sessions = 0;
+
+      (all || []).forEach((w) => {
+        const sDay = startOfDay(w.startedAt || Date.now());
+        let sessionVolForGroup = 0;
+
+        (w.blocks || []).forEach((b) => {
+          if (b.exercise?.muscleGroup !== group) return;
+          (b.sets || []).forEach((s) => {
+            const weight = Number(s?.weight) || 0;
+            const reps = Number(s?.reps) || 0;
+            if (weight <= 0 || reps <= 0) return;
+
+            const vol = weight * reps;
+            const e1 = epley(weight, reps);
+            const exKey = b.exercise?.name || b.exercise?.id;
+
+            if (sDay >= start && sDay <= end) {
+              const cur = bestNow.get(exKey) || 0;
+              if (e1 > cur) bestNow.set(exKey, e1);
+              sessionVolForGroup += vol;
+            } else if (sDay >= prevStart && sDay < start) {
+              const prv = bestPrev.get(exKey) || 0;
+              if (e1 > prv) bestPrev.set(exKey, e1);
+            }
+          });
+        });
+
+        if (sessionVolForGroup > 0) {
+          byDay.set(sDay, (byDay.get(sDay) || 0) + sessionVolForGroup);
+          totalVolume += sessionVolForGroup;
+          sessions += 1;
+        }
+      });
+
+      let prs = 0;
+      bestNow.forEach((nowVal, key) => {
+        const prevVal = bestPrev.get(key) || 0;
+        if (nowVal > prevVal && nowVal > 0) prs += 1;
+      });
+
+      // ACWR: acute (7d) vs chronic (28d weekly avg)
+      const acuteStart = end - 6 * dayMs;
+      const chronicStart = end - 27 * dayMs;
+      let acute = 0, chronicTotal = 0;
+      for (let i = 0; i < 7; i++) acute += byDay.get(acuteStart + i * dayMs) || 0;
+      for (let i = 0; i < 28; i++) chronicTotal += byDay.get(chronicStart + i * dayMs) || 0;
+      const chronicWeekly = chronicTotal / 4;
+      const acwr = chronicWeekly > 0 ? (acute / chronicWeekly) : null;
+
+      if (active) setKpi({ totalVolume, sessions, acwr, prs, byDay });
     })();
-    return () => { mounted = false; };
-  }, []));
+    return () => { active = false; };
+  }, [group, rangeDays]);
 
-  const agg = useMemo(() => {
-    const r = typeof range === 'number' ? range : undefined;
-    return coach.aggregateGroup(workouts, group, r ?? 36500); // "All" => very large window
-  }, [workouts, group, range]);
-
-  // Week sparkline (group volume)
-  const weekLabels = useMemo(() => {
-    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    const arr = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate()-i); d.setHours(0,0,0,0);
-      arr.push(names[d.getDay()]);
-    }
-    return arr;
-  }, []);
-  const vol7 = useMemo(() => {
-    const arr = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate()-i); d.setHours(0,0,0,0);
-      const k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      arr.push(Math.round(agg.byDayVolume.get(k) || 0));
-    }
-    return arr;
-  }, [agg.byDayVolume]);
-
-  const navigationToExercise = (ex) => {
-    if (!ex?.id && !ex?.name) return Alert.alert('Missing exercise info');
-    nav.navigate('ExerciseProgression', { exercise: ex });
+  // Collapsible selector handlers
+  const handleGroupChange = (gname) => {
+    setGroup(gname);
+    try { navigation.setParams?.({ group: gname }); } catch {}
+    setSelectorsOpen(false);
   };
-
-  // Compose Rep.Ai text using coach outputs
-  const insights = useMemo(() => {
-    const out = [];
-    if (agg.deltaPct != null) {
-      if (agg.deltaPct > 5) out.push(`Volume up ${agg.deltaPct.toFixed(0)}% vs previous period—great trajectory.`);
-      else if (agg.deltaPct < -5) out.push(`Volume down ${Math.abs(agg.deltaPct).toFixed(0)}% vs previous period—plan a focused block.`);
-      else out.push('Volume is steady vs previous period—consistency is solid.');
-    }
-    if (agg.balance?.message) out.push(agg.balance.message);
-    if (agg.e1rmTrend?.message) out.push(agg.e1rmTrend.message);
-    if (agg.acwr?.ratio != null) {
-      const r = agg.acwr.ratio.toFixed(2);
-      if (agg.acwr.status === 'high') out.push(`ACWR ${r}: recent load is high vs baseline—watch fatigue.`);
-      else if (agg.acwr.status === 'low') out.push(`ACWR ${r}: consider nudging volume up to drive adaptation.`);
-      else out.push(`ACWR ${r}: load is in a good range.`);
-    }
-    (agg.noteTips || []).forEach((t) => out.push(t));
-    return out;
-  }, [agg]);
+  const handleRangeChange = (d) => {
+    setRangeDays(d);
+    setSelectorsOpen(false);
+  };
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: palette.bg }}
       contentContainerStyle={{ padding: layout.screenHMargin, gap: spacing(2) }}
     >
-      {/* Header: title + range + sparkline */}
-      <Card style={{ padding: spacing(2) }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing(1) }}>
-          <Text style={styles.title}>
-            {GROUP_ICONS[group] || '🏋️‍♂️'} {group} Insights
-          </Text>
-          <RangeChips value={range} onChange={setRange} />
-        </View>
-        <MultiLineChart
-          labels={weekLabels}
-          series={[{ label: `${group} Volume`, color: GROUP_COLORS[group], points: vol7, format: (n) => Math.round(n).toLocaleString() }]}
-          showValues
-          yMode="joint"
-        />
-      </Card>
+      {/* Collapsible selectors */}
+      {selectorsOpen ? (
+        <Card style={{ padding: spacing(2) }}>
+          <View style={{ gap: 8 }}>
+            <GroupChips value={group} onChange={handleGroupChange} />
+            <RangeChips value={rangeDays} onChange={handleRangeChange} options={[30, 60, 90]} />
+          </View>
+        </Card>
+      ) : null}
 
-      {/* Group selector */}
-      <Card style={{ padding: spacing(1.5) }}>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {GROUPS.map((g) => {
-            const active = g === group;
-            return (
-              <Pressable
-                key={g}
-                onPress={() => setGroup(g)}
-                style={{
-                  paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1,
-                  borderColor: active ? GROUP_COLORS[g] : '#e5e7eb',
-                  backgroundColor: '#fff',
-                }}
-              >
-                <Text style={{ fontWeight: '800', color: active ? GROUP_COLORS[g] : palette.text }}>
-                  {(GROUP_ICONS[g] || '') + ' ' + g}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </Card>
+      {/* Header / Hero — tap to expand selectors */}
+      <Pressable onPress={() => setSelectorsOpen(true)}>
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <LinearGradient
+            colors={[`${accent}30`, `${accent}10`]}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            style={{ padding: spacing(2) }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Text style={{ fontSize: 26 }}>{GROUP_META[group].emoji}</Text>
+                <View>
+                  <Text style={{ color: palette.text, fontSize: 18, fontWeight: '900' }}>{group} Insights</Text>
+                  <Text style={{ color: 'rgba(0,0,0,0.55)' }}>Tap to change muscle group & days</Text>
+                </View>
+              </View>
+              <ACWRPill value={kpi.acwr} />
+            </View>
+          </LinearGradient>
+        </Card>
+      </Pressable>
 
-      {/* KPIs */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing(1) }}>
-        <KPICard
-          title="Total Volume"
-          value={`${Math.round(agg.totalVolume).toLocaleString()} lbs`}
-          sub={agg.deltaPct == null ? '—' : `${agg.deltaPct >= 0 ? '+' : ''}${agg.deltaPct.toFixed(0)}% vs prev`}
-        />
-        <KPICard
-          title="Workouts"
-          value={`${agg.workoutsCount}`}
-          sub={`Avg ${(agg.avgPerWeek).toFixed(1)} / week`}
-        />
-        <KPICard
-          title="ACWR"
-          value={agg.acwr?.ratio != null ? agg.acwr.ratio.toFixed(2) : '—'}
-          sub={agg.acwr?.message || '—'}
-        />
+      {/* KPI Row */}
+      <View style={{ flexDirection: 'row', gap: spacing(1) }}>
+        <Card style={[styles.kpiCard, { backgroundColor: `${accent}10` }]}>
+          <Text style={[styles.kpiLabel, { color: accent }]}>Total Volume</Text>
+          <Text style={styles.kpiValue}>{Math.round(kpi.totalVolume).toLocaleString()} lbs</Text>
+          <Text style={styles.kpiSub}>Last {rangeDays} days</Text>
+        </Card>
+        <Card style={styles.kpiCard}>
+          <Text style={[styles.kpiLabel, { color: accent }]}>Workouts</Text>
+          <Text style={styles.kpiValue}>{kpi.sessions}</Text>
+          <Text style={styles.kpiSub}>Completed</Text>
+        </Card>
+        <Card style={styles.kpiCard}>
+          <Text style={[styles.kpiLabel, { color: accent }]}>New PRs</Text>
+          <Text style={styles.kpiValue}>{kpi.prs}</Text>
+          <Text style={styles.kpiSub}>vs prior period</Text>
+        </Card>
       </View>
 
-      {/* Top Exercises */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={styles.sectionTitle}>Top Exercises</Text>
-        <View style={{ gap: 12 }}>
-          {agg.topExercises.length === 0 && <Text style={{ color: palette.sub }}>No data in this range.</Text>}
-          {agg.topExercises.slice(0, 6).map((x) => (
-            <Pressable
-              key={x.exercise?.id || x.exercise?.name}
-              onPress={() => navigationToExercise(x.exercise)}
-              style={{ paddingVertical: 6 }}
-            >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  {!!x.exercise?.icon && <Text style={{ fontSize: 18 }}>{x.exercise.icon}</Text>}
-                  <Text style={{ fontWeight: '700', color: palette.text }}>{x.exercise?.name || 'Exercise'}</Text>
-                </View>
-                <Text style={{ color: palette.sub }}>›</Text>
-              </View>
-              <Text style={{ marginTop: 4, color: palette.sub }}>
-                Volume: {Math.round(x.volume).toLocaleString()} lbs  •  Sessions: {x.sessions}  •  Best: {x.bestSet.reps} reps @ {x.bestSet.weight} lbs
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </Card>
+      {/* Volume Report — REUSABLE WIDGET */}
+      <VolumeReportCard
+        title={`Volume Report — ${group}`}
+        group={group}
+        days={rangeDays}
+        color={accent}
+      />
 
-      {/* AI Coach */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={styles.sectionTitle}>🧠 Rep.Ai Analysis</Text>
-        {insights.length === 0 && <Text style={{ color: palette.sub }}>Do a couple more workouts to unlock insights.</Text>}
-        {insights.map((t, i) => (
-          <Text key={i} style={{ color: palette.text, marginTop: 4 }}>{t}</Text>
-        ))}
-      </Card>
+      {/* Rep.AI Analysis — REUSABLE WIDGET */}
+      <RepAIAnalysisWidget
+        group={group}
+        acwr={kpi.acwr}
+        prs={kpi.prs}
+        totalVolume={kpi.totalVolume}
+        days={rangeDays} // safe to pass; widget may ignore if not used
+      />
 
-      {/* Consistency / Contribution calendar */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={styles.sectionTitle}>Workout Consistency</Text>
-        <ContributionCalendar
-          days={typeof range === 'number' ? range : 180}
-          dayValues={agg.byDayVolume}
-          color={GROUP_COLORS[group]}
-        />
-      </Card>
+      {/* Consistency Heatmap — REUSABLE WIDGET */}
+      <ConsistencyHeatmapCard
+        byDay={kpi.byDay}
+        color={accent}
+        group={group}
+        days={rangeDays}
+      />
+
+      {/* Top Exercises — REUSABLE WIDGET */}
+      <TopExercisesWidget group={group} rangeDays={rangeDays} />
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { color: palette.text, fontSize: 22, fontWeight: '900' },
-  sectionTitle: { color: palette.text, fontSize: 18, fontWeight: '800', marginBottom: spacing(1) },
+  kpiCard: { flex: 1, padding: spacing(1.5) },
+  kpiLabel: { fontSize: 12, fontWeight: '800' },
+  kpiValue: { color: palette.text, fontSize: 20, fontWeight: '900', marginTop: 2 },
+  kpiSub:   { color: palette.sub, fontSize: 11, marginTop: 2 },
 });
