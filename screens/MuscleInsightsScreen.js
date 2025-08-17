@@ -274,7 +274,7 @@ export default function MuscleInsightsScreen() {
 
       {/* Volume Report — REUSABLE WIDGET */}
       <VolumeReportCard
-        title={`Volume Report — ${group}`}
+        title={`Volume Report`}
         group={group}
         days={rangeDays}
         color={accent}

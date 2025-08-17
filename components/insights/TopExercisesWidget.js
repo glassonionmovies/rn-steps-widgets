@@ -99,9 +99,15 @@ export default function TopExercisesWidget({
 
   return (
     <Card style={{ padding: spacing(2) }}>
-      <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800', marginBottom: spacing(1) }}>
-        {title} <Text style={{ color: palette.sub, fontSize: 12 }}>• last {rangeDays} days</Text>
-      </Text>
+      {/* Header: title left, small grey metadata right-aligned */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing(1) }}>
+        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
+          {title}
+        </Text>
+        <Text style={{ color: palette.sub, fontSize: 12 }}>
+          {group ? `${group} · ${rangeDays} days` : `${rangeDays} days`}
+        </Text>
+      </View>
 
       {empty ? (
         <Text style={{ color: palette.sub }}>No {group?.toLowerCase?.() || 'group'} exercises logged in this period.</Text>

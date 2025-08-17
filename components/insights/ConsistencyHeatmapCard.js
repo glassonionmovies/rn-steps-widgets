@@ -4,7 +4,11 @@ import { View, Text } from 'react-native';
 import Card from '../ui/Card';
 import { palette, spacing } from '../../theme';
 
-function startOfDay(ts) { const d = new Date(ts); d.setHours(0,0,0,0); return d.getTime(); }
+function startOfDay(ts) {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
 const dayMs = 24 * 60 * 60 * 1000;
 
 function hexToRgb(hex) {
@@ -13,13 +17,21 @@ function hexToRgb(hex) {
   return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
 }
 
-// Accepts: byDay (Map<number, number> or plain object), color, group, days
+/**
+ * Props:
+ *  - title: string
+ *  - byDay: Map<number, number> | Record<number, number>
+ *  - color: string (hex)
+ *  - group: string | null
+ *  - days: number (default 90)
+ *  - hint: string | (group) => string
+ */
 export default function ConsistencyHeatmapCard({
   title = 'Workout Consistency',
   byDay,
   color = '#2563eb',
-  group,          // e.g. "Chest"
-  days = 90,      // 30/60/90/etc
+  group,
+  days = 90,
   hint = (g) => `Darker = more ${(g || 'muscle').toLowerCase()} volume that day`,
 }) {
   // Normalize byDay to a Map
@@ -27,7 +39,7 @@ export default function ConsistencyHeatmapCard({
     if (byDay instanceof Map) return byDay;
     if (byDay && typeof byDay === 'object') {
       const m = new Map();
-      Object.keys(byDay).forEach(k => m.set(Number(k), Number(byDay[k]) || 0));
+      Object.keys(byDay).forEach((k) => m.set(Number(k), Number(byDay[k]) || 0));
       return m;
     }
     return new Map();
@@ -67,14 +79,22 @@ export default function ConsistencyHeatmapCard({
 
   return (
     <Card style={{ padding: spacing(2) }}>
-      {/* Header with small grey metadata */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing(1) }}>
-        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          {title}
-          <Text style={{ fontSize: 12, color: palette.sub, fontWeight: '600' }}>
-            {` — ${group || 'All'} — ${days} days`}
-          </Text>
+      {/* Header: title on left, small grey metadata right-aligned */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: spacing(1),
+          gap: 8,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />
+          <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>{title}</Text>
+        </View>
+        <Text style={{ color: palette.sub, fontSize: 12 }}>
+          {group ? `${group} · ${days} days` : `${days} days`}
         </Text>
       </View>
 
