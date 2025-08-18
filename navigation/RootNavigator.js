@@ -10,12 +10,12 @@ import ProgressScreen from '../screens/ProgressScreen';
 import TrackWorkoutScreen from '../screens/TrackWorkoutScreen';
 import MuscleInsightsScreen from '../screens/MuscleInsightsScreen';
 import ExerciseProgressionScreen from '../screens/ExerciseProgressionScreen';
-
 import PlanningScreen from '../screens/PlanningScreen';
 import SetupScreen from '../screens/SetupScreen';
 
-// NEW: templates list screen
+// NEW
 import WorkoutTemplatesScreen from '../screens/WorkoutTemplatesScreen';
+import TrainStarterScreen from '../screens/TrainStarterScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -26,7 +26,7 @@ function TabIcon({ routeName, focused, size }) {
     Wellness: require('../assets/tabs/wellness_tab.png'),
     Progress: require('../assets/tabs/progress_tab.png'),
     Train:    require('../assets/tabs/train_tab.png'),
-    Goals:    require('../assets/tabs/goals_tab.png'),   // shows as "Planning" via tabBarLabel
+    Goals:    require('../assets/tabs/goals_tab.png'),
     Setup:    require('../assets/tabs/setup_tab.png'),
   };
   const source = map[routeName];
@@ -45,11 +45,10 @@ function TabIcon({ routeName, focused, size }) {
   );
 }
 
-// --- Stacks per tab (keeps headers + deep links clean) ---
+// --- Stacks per tab ---
 function WellnessStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {/* Using your HomeScreen as the landing “Wellness” for now */}
       <Stack.Screen name="WellnessHome" component={HomeScreen} />
     </Stack.Navigator>
   );
@@ -67,26 +66,20 @@ function ProgressStack() {
       <Stack.Screen
         name="ExerciseProgression"
         component={ExerciseProgressionScreen}
-        options={({ route }) => ({ title: route?.params?.exercise?.name || 'Progression' })}
+        options={({ route }) => ({ title: route?.params?.exercise?.name || route?.params?.exerciseName || 'Progression' })}
       />
     </Stack.Navigator>
   );
 }
 
 function TrainStack() {
+  // IMPORTANT: TrainStarter is first—tab state is preserved, so if you’re already on TrackWorkout
+  // and switch tabs, returning to Train will show TrackWorkout (not the starter).
   return (
     <Stack.Navigator screenOptions={{ headerBackTitleVisible: false }}>
-      <Stack.Screen
-        name="TrackWorkout"
-        component={TrackWorkoutScreen}
-        options={{ title: 'Track Workout' }}
-      />
-      {/* NEW: list and launch templates */}
-      <Stack.Screen
-        name="WorkoutTemplates"
-        component={WorkoutTemplatesScreen}
-        options={{ title: 'Workout Templates' }}
-      />
+      <Stack.Screen name="TrainStarter" component={TrainStarterScreen} options={{ title: 'Train' }} />
+      <Stack.Screen name="TrackWorkout" component={TrackWorkoutScreen} options={{ title: 'Track Workout' }} />
+      <Stack.Screen name="WorkoutTemplates" component={WorkoutTemplatesScreen} options={{ title: 'Workout Templates' }} />
     </Stack.Navigator>
   );
 }
@@ -94,7 +87,6 @@ function TrainStack() {
 function GoalsStack() {
   return (
     <Stack.Navigator>
-      {/* Keeping route key "GoalsHome" but title/tab label use Planning */}
       <Stack.Screen name="GoalsHome" component={PlanningScreen} options={{ title: 'Planning' }} />
     </Stack.Navigator>
   );
@@ -134,7 +126,6 @@ export default function RootNavigator() {
         <Tab.Screen name="Wellness" component={WellnessStack} />
         <Tab.Screen name="Progress" component={ProgressStack} />
         <Tab.Screen name="Train"    component={TrainStack} />
-        {/* Show "Planning" on the tab while keeping route key "Goals" */}
         <Tab.Screen name="Goals"    component={GoalsStack} options={{ tabBarLabel: 'Planning' }} />
         <Tab.Screen name="Setup"    component={SetupStack} />
       </Tab.Navigator>

@@ -1,5 +1,5 @@
 // screens/TrackWorkoutScreen.js
-import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect, useMemo } from 'react';
 import WorkoutSessionSummary from '../components/workout/WorkoutSessionSummary';
 
 import {
@@ -16,6 +16,8 @@ import {
   TextInput,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { Swipeable } from 'react-native-gesture-handler';
+
 import Card from '../components/ui/Card';
 import GradientButton from '../components/ui/GradientButton';
 import { palette, spacing } from '../theme';
@@ -25,19 +27,17 @@ import RestTimer from '../components/workout/RestTimer';
 import PlateCalculatorModal from '../components/workout/PlateCalculatorModal';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+
 import {
   saveWorkout,
   computeSummary,
   getWorkoutById,
   getPrevSetsForExercise,
 } from '../store/workoutStore';
-
-// AI recommender
 import { recommendNextExercise } from '../utils/realtimeExerciseRecommender';
-
-// Templates store
 import { saveWorkoutTemplate } from '../store/templateStore';
 
+// ---------------- helpers ----------------
 function isBarbellExercise(ex) {
   const eq = (ex?.equipment || '').toLowerCase();
   if (eq === 'barbell') return true;
@@ -45,7 +45,6 @@ function isBarbellExercise(ex) {
   return /bench|deadlift|squat|barbell|row|press|ohp/.test(name);
 }
 
-// Identify same exercise by id, then by name/title
 const isSameExercise = (a, b) => {
   if (!a || !b) return false;
   const ida = a?.id != null ? String(a.id) : null;
@@ -56,7 +55,6 @@ const isSameExercise = (a, b) => {
   return na && nb && na === nb;
 };
 
-// Find the most recent block with the same exercise
 const findLastBlockIndexForExercise = (blocks, ex) => {
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (isSameExercise(blocks[i]?.exercise, ex)) return i;
@@ -64,17 +62,52 @@ const findLastBlockIndexForExercise = (blocks, ex) => {
   return -1;
 };
 
+const isEmptySet = (s) =>
+  (Number(s?.weight) || 0) === 0 && (Number(s?.reps) || 0) === 0;
+
+const isSetCompleted = (s) =>
+  !!s?.completedAt ||
+  ((Number(s?.weight) || 0) > 0 && (Number(s?.reps) || 0) > 0 && !!s?.done); // SetRow may set 'done' or 'completedAt'
+
+const collapseTrailingEmpties = (sets) => {
+  const out = Array.isArray(sets) ? sets.slice() : [];
+  let i = out.length - 1;
+  let trailing = 0;
+  while (i >= 0 && isEmptySet(out[i])) {
+    trailing += 1;
+    i -= 1;
+  }
+  if (trailing > 1) {
+    out.splice(out.length - (trailing - 1), (trailing - 1));
+  }
+  return out;
+};
+
+const hasNonEmptySet = (sets) => (sets || []).some((s) => !isEmptySet(s));
+
+// -----------------------------------------
+
 export default function TrackWorkoutScreen() {
   const route = useRoute();
   const navigation = useNavigation();
-  const editingId = route?.params?.workoutId || null;
 
+  const editingId = route?.params?.workoutId || null; // open existing workout
+  const isEditing = !!editingId;
+
+  const template = route?.params?.template || null; // seeded blocks (from template or cloned previous workout)
+  const isFromTemplate = !!template;
+
+  // UI state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [units, setUnits] = useState('lb');
   const [blocks, setBlocks] = useState([]);
-  const [workoutId, setWorkoutId] = useState(editingId || uuidv4());
+  const [workoutId, setWorkoutId] = useState(isEditing ? editingId : uuidv4());
   const [startedAt, setStartedAt] = useState(Date.now());
-  const [title, setTitle] = useState(null); // NEW: auto-title from template
+  const [title, setTitle] = useState(null);
+
+  // read-only view when opening an existing workout from history
+  const [readOnly, setReadOnly] = useState(isEditing);
+  const [dirty, setDirty] = useState(false);
 
   const [plateBlockId, setPlateBlockId] = useState(null);
 
@@ -82,42 +115,53 @@ export default function TrackWorkoutScreen() {
   const [restTrigger, setRestTrigger] = useState(0);
   useEffect(() => { if (restTrigger) restRef.current?.start?.(); }, [restTrigger]);
 
-  // Header: "Templates" button
+  // Header: Templates button
   useLayoutEffect(() => {
     navigation.setOptions({
       headerRight: () => (
-        <Pressable
-          onPress={() => navigation.navigate('WorkoutTemplates')}
-          hitSlop={10}
-        >
+        <Pressable onPress={() => navigation.navigate('WorkoutTemplates')} hitSlop={10}>
           <Text style={{ color: '#2563EB', fontWeight: '800' }}>Templates</Text>
         </Pressable>
       ),
     });
   }, [navigation]);
 
-  // Seed from template if provided (and not editing)
+  // Seed from a template (new workout)
   useEffect(() => {
-    if (editingId) return;
-    const t = route?.params?.template;
-    if (!t || (blocks?.length ?? 0) > 0) return;
-    const seeded = (t.blocks || []).map(({ exercise, sets }) => ({
+    if (!isFromTemplate) return;
+    if ((blocks?.length ?? 0) > 0) return;
+
+    const seeded = (template.blocks || []).map(({ exercise, sets }) => ({
       id: uuidv4(),
       exercise,
-      sets: (sets || [])
-        .map(s => ({ id: uuidv4(), weight: Number(s.weight) || 0, reps: Number(s.reps) || 0 }))
-        .concat([{ id: uuidv4(), weight: 0, reps: 0 }]),
+      // copy weights/reps but mark as not completed; add a single 0/0 at end for UX
+      sets: collapseTrailingEmpties(
+        (sets || [])
+          .map((s) => ({
+            id: uuidv4(),
+            weight: Number(s.weight) || 0,
+            reps: Number(s.reps) || 0,
+            completedAt: null,
+            done: false,
+          }))
+          .concat([{ id: uuidv4(), weight: 0, reps: 0 }])
+      ),
       prevSets: [],
     }));
     setBlocks(seeded);
-    if (t.units) setUnits(t.units);
-    setTitle(t.name || null); // NEW: capture template name as workout title
-  }, [route?.params, editingId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (template.units) setUnits(template.units);
+    setTitle(template.name || null);
+    setReadOnly(false); // new session
+    setDirty(false);
+    setWorkoutId(uuidv4());     // ensure a new id for a fresh entry
+    setStartedAt(Date.now());   // new session timing
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFromTemplate]);
 
-  // Load workout for editing (attach previous sets)
+  // Load existing workout for editing (read-only first)
   useEffect(() => {
     let cancelled = false;
-    if (editingId) {
+    if (isEditing) {
       (async () => {
         const existing = await getWorkoutById(editingId);
         if (existing && !cancelled) {
@@ -134,45 +178,62 @@ export default function TrackWorkoutScreen() {
           setBlocks(enriched);
           setUnits(existing.units || 'lb');
           setStartedAt(existing.startedAt || Date.now());
-          setWorkoutId(existing.id);
+          setWorkoutId(existing.id); // keep id to update in place
           if (existing.title) setTitle(existing.title);
+          setReadOnly(true);
+          setDirty(false);
         }
       })();
     }
     return () => { cancelled = true; };
-  }, [editingId]);
+  }, [isEditing, editingId]);
 
-  const isEmptySet = (s) =>
-    (Number(s?.weight) || 0) === 0 && (Number(s?.reps) || 0) === 0;
+  // ------------- add/fill helpers -------------
 
-  // Fill trailing empty set if present; otherwise append a new set (and ensure trailing empty if valid)
-  function appendOrFillLastSet(block, seed = { weight: 0, reps: 0 }) {
-    const sets = Array.isArray(block.sets) ? block.sets.slice() : [];
-    const hasSets = sets.length > 0;
-    const lastIdx = hasSets ? sets.length - 1 : -1;
-    const last = hasSets ? sets[lastIdx] : null;
+  function markDirty() {
+    if (!dirty) setDirty(true);
+  }
+
+  function appendOrFillLastSet(block, seed = { weight: 0, reps: 0 }, opts = { fromAI: false }) {
+    let sets = Array.isArray(block.sets) ? block.sets.slice() : [];
+    sets = collapseTrailingEmpties(sets);
 
     const nextWeight = Number(seed.weight) || 0;
     const nextReps = Number(seed.reps) || 0;
 
-    if (last && (Number(last.weight) || 0) === 0 && (Number(last.reps) || 0) === 0) {
-      sets[lastIdx] = { ...last, weight: nextWeight, reps: nextReps };
+    const last = sets[sets.length - 1];
+    const lastIsEmpty = last && isEmptySet(last);
+
+    if (lastIsEmpty) {
+      // Fill existing empty
+      sets[sets.length - 1] = {
+        ...last,
+        weight: nextWeight,
+        reps: nextReps,
+        done: false,
+        completedAt: null,
+      };
+      if (!opts.fromAI) {
+        sets.push({ id: uuidv4(), weight: 0, reps: 0 });
+      }
     } else {
-      sets.push({ id: uuidv4(), weight: nextWeight, reps: nextReps });
+      // Append new filled set
+      sets.push({ id: uuidv4(), weight: nextWeight, reps: nextReps, done: false, completedAt: null });
+      if (!opts.fromAI) {
+        sets.push({ id: uuidv4(), weight: 0, reps: 0 });
+      }
     }
 
-    const end = sets[sets.length - 1];
-    const endValid = (Number(end?.weight) || 0) > 0 && (Number(end?.reps) || 0) > 0;
-    if (endValid) {
-      sets.push({ id: uuidv4(), weight: 0, reps: 0 });
-    }
-    return { ...block, sets };
+    return { ...block, sets: collapseTrailingEmpties(sets) };
   }
 
-  // Add exercise (seed from previous) — if same exercise already exists, just add a set
+  // ------------- actions -------------
+
   async function addExercise(ex) {
+    if (readOnly) return;
     const idx = findLastBlockIndexForExercise(blocks, ex);
     if (idx >= 0) {
+      markDirty();
       setBlocks((prev) =>
         prev.map((b, i) => (i === idx ? appendOrFillLastSet(b, { weight: 0, reps: 0 }) : b))
       );
@@ -184,20 +245,27 @@ export default function TrackWorkoutScreen() {
       id: uuidv4(),
       weight: Number(ps.weight) || 0,
       reps: Number(ps.reps) || 0,
+      done: false,
+      completedAt: null,
     }));
-    const initialSets =
+
+    let initialSets =
       setsFromPrev.length > 0
         ? [...setsFromPrev, { id: uuidv4(), weight: 0, reps: 0 }]
         : [{ id: uuidv4(), weight: 0, reps: 0 }];
 
+    initialSets = collapseTrailingEmpties(initialSets);
+
+    markDirty();
     setBlocks((prev) => [
       ...prev,
       { id: uuidv4(), exercise: ex, sets: initialSets, prevSets },
     ]);
   }
 
-  // Add AI-recommended exercise — if same exercise exists, append prefilled set instead
   function addAiRecommendedExercise() {
+    if (readOnly) return;
+
     const suggestion = recommendNextExercise({ blocks, units, startedAt, workoutId });
     if (!suggestion || !suggestion.exercise) {
       Alert.alert('Need more data', 'Complete at least one set to get AI recommendations.');
@@ -206,11 +274,16 @@ export default function TrackWorkoutScreen() {
 
     const idx = findLastBlockIndexForExercise(blocks, suggestion.exercise);
 
+    markDirty();
     if (idx >= 0) {
       setBlocks((prev) =>
         prev.map((b, i) =>
           i === idx
-            ? appendOrFillLastSet(b, { weight: suggestion.weight, reps: suggestion.reps })
+            ? appendOrFillLastSet(
+                b,
+                { weight: suggestion.weight, reps: suggestion.reps },
+                { fromAI: true }
+              )
             : b
         )
       );
@@ -218,8 +291,7 @@ export default function TrackWorkoutScreen() {
     }
 
     const initialSets = [
-      { id: uuidv4(), weight: Number(suggestion.weight) || 0, reps: Number(suggestion.reps) || 0 },
-      { id: uuidv4(), weight: 0, reps: 0 },
+      { id: uuidv4(), weight: Number(suggestion.weight) || 0, reps: Number(suggestion.reps) || 0, done: false, completedAt: null },
     ];
 
     setBlocks((prev) => [
@@ -228,8 +300,10 @@ export default function TrackWorkoutScreen() {
     ]);
   }
 
-  // Patch set; auto-append & trigger rest when last becomes valid/done
   function patchSet(blockId, setId, patch) {
+    if (readOnly) return;
+    markDirty();
+
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== blockId) return b;
@@ -262,21 +336,32 @@ export default function TrackWorkoutScreen() {
           setRestTrigger(Date.now());
         }
 
+        outSets = collapseTrailingEmpties(outSets);
         return { ...b, sets: outSets };
       })
     );
   }
 
   function removeSet(blockId, setId) {
-    setBlocks((prev) =>
-      prev.map((b) =>
-        b.id === blockId ? { ...b, sets: b.sets.filter((s) => s.id !== setId) } : b
-      )
-    );
+    if (readOnly) return;
+    markDirty();
+
+    setBlocks((prev) => {
+      const afterSetRemoval = prev.map((b) => {
+        if (b.id !== blockId) return b;
+        let sets = (b.sets || []).filter((s) => s.id !== setId);
+        sets = collapseTrailingEmpties(sets);
+        return { ...b, sets };
+      });
+      // drop block if no non-empty sets remain
+      return afterSetRemoval.filter((b) => hasNonEmptySet(b.sets));
+    });
   }
 
-  // Apply plate-calculated total to the LAST set of that block
   function applyPlateTotal(blockId, total) {
+    if (readOnly) return;
+    markDirty();
+
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== blockId) return b;
@@ -284,116 +369,173 @@ export default function TrackWorkoutScreen() {
         const idx = b.sets.length - 1;
         const sets = b.sets.slice();
         sets[idx] = { ...sets[idx], weight: total };
-        return { ...b, sets };
+        return { ...b, sets: collapseTrailingEmpties(sets) };
       })
     );
   }
 
-  async function finish() {
-    const cleanedBlocks = blocks
-      .map(({ id, exercise, sets }) => ({
-        id,
-        exercise,
-        sets: (sets || []).filter((s) => !isEmptySet(s)),
-      }))
+  // ------------- save / template / cancel -------------
+
+  async function finishOrUpdate() {
+    // If in read-only and editing an existing workout, first switch to edit mode.
+    if (isEditing && readOnly) {
+      setReadOnly(false);
+      return;
+    }
+
+    // Persist only COMPLETED sets
+    const cleanedBlocks = (blocks || [])
+      .map(({ id, exercise, sets }) => {
+        const completedSets = (sets || []).filter(isSetCompleted);
+        return { id, exercise, sets: completedSets };
+      })
       .filter((b) => (b.sets || []).length > 0);
 
-    if (cleanedBlocks.length === 0) {
-      Alert.alert('Nothing to save', 'Please enter at least one non-zero set.');
+    if (!cleanedBlocks.length) {
+      Alert.alert('Nothing to save', 'Please complete at least one set (check mark) before saving.');
       return;
     }
 
     const payload = {
       id: workoutId,
-      startedAt,
+      startedAt,                   // original when editing; new for fresh/template
       finishedAt: Date.now(),
       units,
-      blocks: cleanedBlocks,
-      title: title || undefined, // NEW: persist title when present
+      blocks: cleanedBlocks.map((b) => ({
+        ...b,
+        sets: b.sets.map((s) => ({
+          ...s,
+          completedAt: s.completedAt ?? new Date().toISOString(),
+          done: true,
+        })),
+      })),
+      title: title || undefined,
     };
 
     await saveWorkout(payload);
+
     const s = computeSummary(payload);
     Alert.alert(
-      'Workout saved',
+      isEditing ? 'Workout updated' : 'Workout saved',
       `Exercises: ${s.exercises}\nSets: ${s.totalSets}\nVolume: ${s.totalVolume.toFixed(0)} ${units}\nDuration: ${s.durationMin} min`
     );
+
+    if (isEditing) {
+      setDirty(false);
+      setReadOnly(true);
+    } else {
+      // fresh/template – keep editing if they want to continue, or navigate away if desired
+    }
   }
 
-  // ---- Save as Template modal state & handlers ----
+  // Save as Template modal state & handlers
   const [tplOpen, setTplOpen] = useState(false);
   const [tplName, setTplName] = useState('');
-
   async function confirmSaveTemplate() {
     const cleanedBlocks = (blocks || [])
       .map(({ exercise, sets }) => ({
         exercise,
         sets: (sets || [])
-          .filter(s => !isEmptySet(s))
-          .map(s => ({ weight: Number(s.weight) || 0, reps: Number(s.reps) || 0 })),
+          .filter((s) => !isEmptySet(s) && ((Number(s.weight)||0) > 0 || (Number(s.reps)||0) > 0))
+          .map((s) => ({ weight: Number(s.weight) || 0, reps: Number(s.reps) || 0 })),
       }))
-      .filter(b => (b.sets || []).length > 0);
+      .filter((b) => (b.sets || []).length > 0);
 
     if (!cleanedBlocks.length) {
       Alert.alert('No data', 'Enter at least one non-zero set to save a template.');
       return;
     }
-    const name = tplName.trim() || `Template ${new Date().toLocaleDateString()}`;
+    const name = (tplName || '').trim() || `Template ${new Date().toLocaleDateString()}`;
     await saveWorkoutTemplate(name, { units, blocks: cleanedBlocks });
     setTplOpen(false);
     setTplName('');
     Alert.alert('Saved', `Template “${name}” saved.`);
   }
 
-  // Cancel workout: confirm, then discard and go to Wellness tab
   function cancelWorkout() {
-    Alert.alert(
-      'Discard workout?',
-      'Your current entries will be lost.',
-      [
-        { text: 'Keep Editing', style: 'cancel' },
-        {
-          text: 'Discard',
-          style: 'destructive',
-          onPress: () => {
-            try {
-              const routes = require('../navigation/routes');
-              if (routes?.goHome) { routes.goHome(navigation); return; }
-            } catch {}
-            navigation.navigate('Wellness');
-          },
+    Alert.alert('Discard workout?', 'Your current entries will be lost.', [
+      { text: 'Keep Editing', style: 'cancel' },
+      {
+        text: 'Discard',
+        style: 'destructive',
+        onPress: () => {
+          try {
+            const routes = require('../navigation/routes');
+            if (routes?.goHome) return routes.goHome(navigation);
+          } catch {}
+          navigation.navigate('Wellness');
         },
-      ]
-    );
+      },
+    ]);
   }
+
+  const renderRightActions = (blockId, setId) => (
+    <View style={styles.swipeActions}>
+      <Pressable
+        onPress={() => removeSet(blockId, setId)}
+        style={styles.deleteAction}
+        hitSlop={8}
+        accessibilityLabel="Delete set"
+      >
+        <Text style={styles.deleteActionText}>Delete</Text>
+      </Pressable>
+    </View>
+  );
+
+  const primaryBtnLabel = useMemo(() => {
+    if (isEditing) {
+      if (readOnly && !dirty) return 'Edit';
+      return 'Update';
+    }
+    return 'Finish & Save';
+  }, [isEditing, readOnly, dirty]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
         <ScrollView contentContainerStyle={{ padding: spacing(2), rowGap: spacing(1.5) }}>
           {/* Exercises + Set list */}
           <Card style={{ padding: spacing(2) }}>
             <Text style={styles.title}>Exercises</Text>
 
-            {blocks.length === 0 ? (
-              <Text style={{ opacity: 0.7 }}>No exercises yet. Add one to begin.</Text>
-            ) : null}
+            {(!blocks || blocks.length === 0) && (
+              <Text style={{ opacity: 0.7, marginBottom: spacing(1) }}>
+                No exercises yet. Add one to begin.
+              </Text>
+            )}
 
             {blocks.map((b) => (
               <View key={b.id} style={{ marginBottom: spacing(2) }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing(1) }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: spacing(1),
+                  }}
+                >
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    {!!b.exercise?.icon && <Text style={{ fontSize: 18, marginRight: 8 }}>{b.exercise.icon}</Text>}
+                    {!!b.exercise?.icon && (
+                      <Text style={{ fontSize: 18, marginRight: 8 }}>{b.exercise.icon}</Text>
+                    )}
                     <Text style={{ fontSize: 18, fontWeight: '700', color: palette.text }}>
                       {b.exercise?.name || 'Exercise'}
                     </Text>
 
-                    {/* Plate calculator only for Barbell */}
-                    {isBarbellExercise(b.exercise) && (
+                    {isBarbellExercise(b.exercise) && !readOnly && (
                       <Pressable
                         onPress={() => setPlateBlockId(b.id)}
                         hitSlop={8}
-                        style={{ marginLeft: 10, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F3F4F6' }}
+                        style={{
+                          marginLeft: 10,
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          borderRadius: 999,
+                          backgroundColor: '#F3F4F6',
+                        }}
                       >
                         <Text style={{ fontSize: 16 }}>🏋️‍♂️</Text>
                       </Pressable>
@@ -402,52 +544,74 @@ export default function TrackWorkoutScreen() {
                 </View>
 
                 {b.sets.map((s, i) => (
-                  <SetRow
+                  <Swipeable
                     key={s.id}
-                    index={i}
-                    exercise={b.exercise}
-                    set={s}
-                    units={units}
-                    prevSameIndex={b.prevSets ? b.prevSets[i] : null}
-                    onChange={(patch) => patchSet(b.id, s.id, patch)}
-                    onRemove={() => removeSet(b.id, s.id)}
-                    onToggleComplete={(done) => patchSet(b.id, s.id, { completedAt: done ? new Date().toISOString() : null })}
-                  />
+                    renderRightActions={() => (!readOnly ? renderRightActions(b.id, s.id) : null)}
+                    rightThreshold={40}
+                    overshootRight={false}
+                  >
+                    <SetRow
+                      index={i}
+                      exercise={b.exercise}
+                      set={s}
+                      units={units}
+                      readOnly={readOnly}
+                      prevSameIndex={b.prevSets ? b.prevSets[i] : null}
+                      onChange={(patch) => patchSet(b.id, s.id, patch)}
+                      onRemove={() => removeSet(b.id, s.id)}
+                      onToggleComplete={(done) =>
+                        patchSet(b.id, s.id, {
+                          completedAt: done ? new Date().toISOString() : null,
+                          done,
+                        })
+                      }
+                    />
+                  </Swipeable>
                 ))}
               </View>
             ))}
 
-            {/* Actions row: Add Exercise + small circular AI button */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 10 }}>
+            {/* Actions row: ALWAYS visible; disabled in read-only */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 10, marginTop: spacing(1) }}>
               <View style={{ flex: 1 }}>
-                <GradientButton title="Add Exercise" onPress={() => setPickerOpen(true)} />
+                <GradientButton
+                  title="Add Exercise"
+                  onPress={() => setPickerOpen(true)}
+                  disabled={readOnly}
+                />
               </View>
 
-              <Pressable onPress={addAiRecommendedExercise} accessibilityLabel="AI Recommendation" style={styles.aiBtn} hitSlop={6}>
+              <Pressable
+                onPress={addAiRecommendedExercise}
+                accessibilityLabel="AI Recommendation"
+                style={[styles.aiBtn, readOnly && { opacity: 0.4 }]}
+                hitSlop={6}
+                disabled={readOnly}
+              >
                 <Text style={styles.aiBtnText}>AI</Text>
               </Pressable>
             </View>
           </Card>
 
-          {/* Prominent Rest Timer */}
+          {/* Rest Timer */}
           <Card style={{ padding: spacing(2) }}>
             <Text style={styles.title}>Rest Timer</Text>
             <RestTimer ref={restRef} seconds={90} />
           </Card>
 
-          {/* Session Summary + Finish & Save + Links all in one Card */}
+          {/* Session Summary + Primary CTA + Links */}
           <Card style={{ padding: spacing(2) }}>
             <WorkoutSessionSummary
               blocks={blocks}
               units={units}
-              showFinish={false}   // hide built-in button so we can place ours + links together
+              showFinish={false}
               showTitle={true}
               titleOverride={title || undefined}
             />
-            <View style={{ height: spacing(1) }} />
-            <GradientButton title="Finish & Save" onPress={finish} />
 
-            {/* Links directly under the button */}
+            <View style={{ height: spacing(1) }} />
+            <GradientButton title={primaryBtnLabel} onPress={finishOrUpdate} />
+
             <View style={{ alignItems: 'center', gap: 10, marginTop: spacing(1) }}>
               <Pressable onPress={() => setTplOpen(true)} hitSlop={6}>
                 <Text style={styles.linkPrimary}>Save as Template</Text>
@@ -460,19 +624,29 @@ export default function TrackWorkoutScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <ExercisePickerModal visible={pickerOpen} onClose={() => setPickerOpen(false)} onPick={addExercise} />
+      <ExercisePickerModal
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={addExercise}
+      />
 
-      {/* Shared Plate Calculator modal */}
       <PlateCalculatorModal
         visible={!!plateBlockId}
         onClose={() => setPlateBlockId(null)}
-        onDone={(total) => { if (plateBlockId) applyPlateTotal(plateBlockId, total); }}
+        onDone={(total) => {
+          if (plateBlockId) applyPlateTotal(plateBlockId, total);
+        }}
         initialBarWeight={45}
         unit={units === 'kg' ? 'kg' : 'lb'}
       />
 
       {/* Save Template Modal */}
-      <Modal visible={tplOpen} transparent animationType="fade" onRequestClose={() => setTplOpen(false)}>
+      <Modal
+        visible={tplOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTplOpen(false)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Template Name</Text>
@@ -485,18 +659,16 @@ export default function TrackWorkoutScreen() {
               autoFocus
             />
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
-              <Pressable onPress={() => setTplOpen(false)}><Text style={styles.modalBtnText}>Cancel</Text></Pressable>
-              <Pressable onPress={confirmSaveTemplate}><Text style={[styles.modalBtnText, { fontWeight: '800' }]}>Save</Text></Pressable>
+              <Pressable onPress={() => setTplOpen(false)}>
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={confirmSaveTemplate}>
+                <Text style={[styles.modalBtnText, { fontWeight: '800' }]}>Save</Text>
+              </Pressable>
             </View>
           </View>
         </View>
       </Modal>
-
-      <ExercisePickerModal
-        visible={pickerOpen}
-        onClose={() => setPickerOpen(false)}
-        onPick={addExercise}
-      />
     </SafeAreaView>
   );
 }
@@ -504,7 +676,6 @@ export default function TrackWorkoutScreen() {
 const styles = StyleSheet.create({
   title: { color: palette.text, fontSize: 20, fontWeight: '800', marginBottom: 8 },
 
-  // circular AI button
   aiBtn: {
     width: 44,
     height: 44,
@@ -520,13 +691,40 @@ const styles = StyleSheet.create({
   },
   aiBtnText: { color: 'white', fontWeight: '900', letterSpacing: 0.5 },
 
-  // links under Finish & Save
   linkPrimary: { color: '#2563EB', fontWeight: '800' },
   linkDanger: { color: '#EF4444', fontWeight: '800' },
 
-  // modal
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalCard: { width: '100%', maxWidth: 420, borderRadius: 14, backgroundColor: '#fff', padding: 16 },
+  swipeActions: {
+    width: 88,
+    justifyContent: 'center',
+    alignItems: 'stretch',
+  },
+  deleteAction: {
+    flex: 1,
+    height: '100%',
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteActionText: {
+    color: '#B91C1C',
+    fontWeight: '900',
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    padding: 16,
+  },
   modalTitle: { color: palette.text, fontSize: 18, fontWeight: '900', marginBottom: 8 },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
