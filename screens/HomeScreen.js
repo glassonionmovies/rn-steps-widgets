@@ -8,7 +8,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Card from '../components/ui/Card';
 import GradientButton from '../components/ui/GradientButton';
 import StatCard from '../components/StatCard';
-import WidgetTwoHealth from '../components/WidgetTwoHealth';
+// REPLACED: Steps widget -> AI.Rep insights widget
+
+import RepAIWellnessInsightsWidget from '../components/insights/RepAIWellnessInsightsWidget';
 import { palette, spacing, layout } from '../theme';
 import { getAllWorkouts } from '../store/workoutStore';
 
@@ -148,6 +150,9 @@ export default function HomeScreen() {
   const [name, setName] = useState('Athlete');
   const [energy, setEnergy] = useState(6);
   const [sleep, setSleep] = useState(6);
+  // NEW: mode for fasting/maintenance/bulking
+  const [mode, setMode] = useState('maintenance');
+
   const [saving, setSaving] = useState(false);
   const [checkins, setCheckins] = useState([]);
   const [workouts, setWorkouts] = useState([]);
@@ -167,6 +172,8 @@ export default function HomeScreen() {
         if (last) {
           if (typeof last.energy === 'number') setEnergy(last.energy);
           if (typeof last.sleep === 'number') setSleep(last.sleep);
+          // NEW: restore last mode if present
+          if (typeof last.mode === 'string') setMode(last.mode);
         }
       } catch {}
       try { const all = await getAllWorkouts(); if (active) setWorkouts(all || []); } catch {}
@@ -189,7 +196,8 @@ export default function HomeScreen() {
   const saveCheckin = useCallback(async () => {
     try {
       setSaving(true);
-      const entry = { at: new Date().toISOString(), energy: Math.round(energy), sleep: Math.round(sleep) };
+      // NEW: persist mode in today's entry
+      const entry = { at: new Date().toISOString(), energy: Math.round(energy), sleep: Math.round(sleep), mode };
       const raw = await AsyncStorage.getItem(CHECKIN_KEY);
       let arr = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(arr)) arr = [];
@@ -199,13 +207,13 @@ export default function HomeScreen() {
       await AsyncStorage.setItem(CHECKIN_KEY, JSON.stringify(arr));
       setCheckins(arr);
       setExpanded(false); // collapse after save ✅
-      Alert.alert('Saved', `Energy ${entry.energy}/10 • Sleep ${entry.sleep}/10`);
+      Alert.alert('Saved', `Energy ${entry.energy}/10 • Sleep ${entry.sleep}/10 • Mode ${entry.mode}`);
     } catch (e) {
       Alert.alert('Error', 'Could not save your check-in.');
     } finally {
       setSaving(false);
     }
-  }, [energy, sleep]);
+  }, [energy, sleep, mode]);
 
   // weekly stats + streaks
   const weekStats = useMemo(() => {
@@ -242,10 +250,10 @@ export default function HomeScreen() {
         paddingHorizontal: layout.screenHMargin,
         paddingTop: spacing(2),
         paddingBottom: spacing(4),
-        gap: spacing(2),
+        gap: spacing(2), // <-- margins/spacing unchanged
       }}
     >
-      {/* Header */}
+      {/* Header — unchanged */}
       <LinearGradient colors={['#6a5cff', '#4ac3ff']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.header}>
         <Text style={styles.title}>Wellness</Text>
         <Text style={styles.subtitle}>Your daily readiness & guidance</Text>
@@ -261,13 +269,14 @@ export default function HomeScreen() {
         {expanded === false && hasToday && (
           <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" style={{ paddingVertical: spacing(1) }}>
             <Text style={{ color: palette.text, fontWeight: '800' }}>
-              Today’s Check-In: Energy ⚡️ {latest.energy}/10 | Sleep 🌙 {latest.sleep}/10
+              {/* NEW: include Mode in summary */}
+              Energy ⚡️ {latest.energy}/10    Sleep 🌙 {latest.sleep}/10     Mode 🍽️ {String(latest.mode || mode).replace(/\b\w/g, c => c.toUpperCase())}
             </Text>
             <Text style={{ color: palette.sub, marginTop: 4, fontSize: 12 }}>Tap to adjust</Text>
           </Pressable>
         )}
 
-        {/* Expanded state (sliders + Save). No redundant value text lines. */}
+        {/* Expanded state (sliders + Mode + Save). Keeps your layout/margins intact. */}
         {expanded !== false && (
           <>
             <View style={{ height: spacing(1) }} />
@@ -308,13 +317,32 @@ export default function HomeScreen() {
               <Text style={styles.sliderHint}>Best</Text>
             </View>
 
+            {/* NEW: Mode selector (keeps same spacing cadence) */}
+            <View style={{ height: spacing(1.25) }} />
+            <Text style={styles.label}>Nutrition / Body Goal</Text>
+            <View style={styles.modeRow}>
+              {['fasting','maintenance','bulking'].map(opt => (
+                <Pressable
+                  key={opt}
+                  onPress={() => setMode(opt)}
+                  style={[styles.chip, mode === opt && styles.chipSelected]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: mode === opt }}
+                >
+                  <Text style={[styles.chipText, mode === opt && styles.chipTextSelected]}>
+                    {opt[0].toUpperCase() + opt.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
             <View style={{ height: spacing(1.5) }} />
             <GradientButton title={saving ? 'Saving…' : 'Save for Today'} onPress={saveCheckin} disabled={saving} />
           </>
         )}
       </Card>
 
-      {/* 2) Rep.AI Insights & Recommendations */}
+      {/* 2) Rep.AI Insights & Recommendations (inline block unchanged) */}
       <RepAiInsights name={name} latestCheckin={latest} workouts={workouts} />
 
       {/* 3) This Week’s Activity */}
@@ -349,9 +377,9 @@ export default function HomeScreen() {
         </View>
       </Card>
 
-      {/* 4) Steps (Last 7 Days) */}
+      {/* 4) REPLACED: Steps widget -> AI.Rep Insights widget (keeps same Card wrapper to preserve spacing) */}
       <Card>
-        <WidgetTwoHealth hideRefresh />
+        <RepAIWellnessInsightsWidget name={name} latestCheckin={latest} workouts={workouts} mode={mode} />
       </Card>
     </ScrollView>
   );
@@ -383,4 +411,11 @@ const styles = StyleSheet.create({
   insightTitle: { color: palette.text, fontWeight: '800', marginBottom: 4 },
   insightLine: { color: palette.text },
   insightBody: { color: palette.sub, marginTop: 2 },
+
+  // NEW: tiny style block for Mode chips (no global spacing changes)
+  modeRow: { flexDirection:'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
+  chip: { paddingVertical:8, paddingHorizontal:12, borderRadius:12, borderWidth:1, borderColor: palette.border, backgroundColor: 'transparent' },
+  chipSelected: { backgroundColor: palette.accent + '22', borderColor: palette.accent },
+  chipText: { color: palette.text, fontWeight:'600' },
+  chipTextSelected: { color: palette.accent, fontWeight:'800' },
 });
