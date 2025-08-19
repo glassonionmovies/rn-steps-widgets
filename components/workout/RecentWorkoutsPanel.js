@@ -1,32 +1,45 @@
 // components/workout/RecentWorkoutsPanel.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import Card from '../ui/Card';
 import GradientButton from '../ui/GradientButton';
 import WorkoutSessionSummary from './WorkoutSessionSummary';
 import { palette, spacing } from '../../theme';
 import { getAllWorkouts } from '../../store/workoutStore';
 
+// Prefer helper if present (nested tabs); fall back to manual nested nav
 let goTrackWorkout;
-try { ({ goTrackWorkout } = require('../../navigation/routes')); } catch (_) { goTrackWorkout = null; }
+try {
+  ({ goTrackWorkout } = require('../../navigation/routes'));
+} catch (_) {
+  goTrackWorkout = null;
+}
 
-export default function RecentWorkoutsPanel({ workouts: propWorkouts, selectionMode: propSelectionMode }) {
+export default function RecentWorkoutsPanel({ workouts: propWorkouts }) {
   const navigation = useNavigation();
-  const route = useRoute();
-  const [internal, setInternal] = useState(null);
+  const [internal, setInternal] = useState(null); // null = not loaded
 
-  const selectionMode = propSelectionMode ?? !!route?.params?.selectPattern;
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      if (propWorkouts && propWorkouts.length) return;
-      const all = await getAllWorkouts();
-      if (active) setInternal(all || []);
-    })();
-    return () => { active = false; };
+  const load = useCallback(async () => {
+    // If parent provided workouts, don't self-load
+    if (propWorkouts && propWorkouts.length) return;
+    const all = await getAllWorkouts();
+    setInternal(all || []);
   }, [propWorkouts]);
+
+  // Initial load (for non-parent-provided usage)
+  useEffect(() => {
+    if (!propWorkouts || propWorkouts.length === 0) {
+      load();
+    }
+  }, [propWorkouts, load]);
+
+  // 🔁 Refresh whenever the screen regains focus
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const data = useMemo(() => {
     if (propWorkouts && propWorkouts.length) return propWorkouts;
@@ -40,16 +53,10 @@ export default function RecentWorkoutsPanel({ workouts: propWorkouts, selectionM
   );
 
   const openWorkout = (id) => {
-    if (selectionMode) {
-      // Use this workout as a PATTERN (clone) → new Track session
-      navigation.navigate('Train', { screen: 'TrackWorkout', params: { patternFromWorkoutId: id } });
-      return;
-    }
-    // Normal: open for editing/review
     if (goTrackWorkout) {
-      goTrackWorkout(navigation, id ? { workoutId: id, mode: 'edit' } : undefined);
+      goTrackWorkout(navigation, id ? { workoutId: id } : undefined);
     } else {
-      navigation.navigate('Train', { screen: 'TrackWorkout', params: id ? { workoutId: id, mode: 'edit' } : undefined });
+      navigation.navigate('Train', { screen: 'TrackWorkout', params: id ? { workoutId: id } : undefined });
     }
   };
 
@@ -77,14 +84,18 @@ export default function RecentWorkoutsPanel({ workouts: propWorkouts, selectionM
                   borderBottomColor: 'rgba(0,0,0,0.06)',
                 }}
               >
-                <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>{when}</Text>
+                {/* Date heading (and optional user-defined title if present) */}
+                <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>
+                  {when}{w.title ? ` • ${w.title}` : ''}
+                </Text>
+
+                {/* Summary UI (read-only preview) */}
                 <View pointerEvents="none">
                   <WorkoutSessionSummary
                     blocks={w.blocks || []}
                     units={w.units || 'lb'}
                     showFinish={false}
                     showTitle={false}
-                    titleOverride={w.title}
                   />
                 </View>
               </Pressable>
@@ -93,12 +104,8 @@ export default function RecentWorkoutsPanel({ workouts: propWorkouts, selectionM
         </View>
       )}
 
-      {!selectionMode && (
-        <>
-          <View style={{ height: spacing(1) }} />
-          <GradientButton title="Start New Workout" onPress={() => openWorkout(null)} />
-        </>
-      )}
+      <View style={{ height: spacing(1) }} />
+      <GradientButton title="Start New Workout" onPress={() => openWorkout(null)} />
     </Card>
   );
 }

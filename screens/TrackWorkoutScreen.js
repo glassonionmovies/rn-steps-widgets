@@ -1,5 +1,5 @@
 // screens/TrackWorkoutScreen.js
-import React, { useEffect, useRef, useState, useLayoutEffect, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import WorkoutSessionSummary from '../components/workout/WorkoutSessionSummary';
 
 import {
@@ -16,8 +16,6 @@ import {
   TextInput,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { Swipeable } from 'react-native-gesture-handler';
-
 import Card from '../components/ui/Card';
 import GradientButton from '../components/ui/GradientButton';
 import { palette, spacing } from '../theme';
@@ -27,17 +25,16 @@ import RestTimer from '../components/workout/RestTimer';
 import PlateCalculatorModal from '../components/workout/PlateCalculatorModal';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
-
 import {
   saveWorkout,
   computeSummary,
   getWorkoutById,
   getPrevSetsForExercise,
 } from '../store/workoutStore';
+import { Swipeable } from 'react-native-gesture-handler';
 import { recommendNextExercise } from '../utils/realtimeExerciseRecommender';
 import { saveWorkoutTemplate } from '../store/templateStore';
 
-// ---------------- helpers ----------------
 function isBarbellExercise(ex) {
   const eq = (ex?.equipment || '').toLowerCase();
   if (eq === 'barbell') return true;
@@ -45,6 +42,7 @@ function isBarbellExercise(ex) {
   return /bench|deadlift|squat|barbell|row|press|ohp/.test(name);
 }
 
+// ----- helpers for matching/normalizing -----
 const isSameExercise = (a, b) => {
   if (!a || !b) return false;
   const ida = a?.id != null ? String(a.id) : null;
@@ -62,42 +60,44 @@ const findLastBlockIndexForExercise = (blocks, ex) => {
   return -1;
 };
 
-const isEmptySet = (s) =>
-  (Number(s?.weight) || 0) === 0 && (Number(s?.reps) || 0) === 0;
-
-const isSetCompleted = (s) =>
-  !!s?.completedAt ||
-  ((Number(s?.weight) || 0) > 0 && (Number(s?.reps) || 0) > 0 && !!s?.done); // SetRow may set 'done' or 'completedAt'
-
-const collapseTrailingEmpties = (sets) => {
+// Keep at most one empty set (0/0) at the end
+function collapseTrailingEmpties(sets) {
   const out = Array.isArray(sets) ? sets.slice() : [];
   let i = out.length - 1;
   let trailing = 0;
-  while (i >= 0 && isEmptySet(out[i])) {
+  while (
+    i >= 0 &&
+    ((Number(out[i]?.weight) || 0) === 0 && (Number(out[i]?.reps) || 0) === 0)
+  ) {
     trailing += 1;
     i -= 1;
   }
-  if (trailing > 1) {
-    out.splice(out.length - (trailing - 1), (trailing - 1));
-  }
+  if (trailing > 1) out.splice(out.length - (trailing - 1), trailing - 1);
   return out;
-};
+}
 
-const hasNonEmptySet = (sets) => (sets || []).some((s) => !isEmptySet(s));
+const hasNonEmptySet = (sets) =>
+  (sets || []).some(
+    (s) => (Number(s.weight) || 0) > 0 || (Number(s.reps) || 0) > 0
+  );
 
-// -----------------------------------------
+const isSetCompleted = (s) =>
+  !!s?.completedAt || ((Number(s.weight) || 0) > 0 && (Number(s.reps) || 0) > 0);
+
+// --------------------------------------------
 
 export default function TrackWorkoutScreen() {
   const route = useRoute();
   const navigation = useNavigation();
 
-  const editingId = route?.params?.workoutId || null; // open existing workout
+  const editingId = route?.params?.workoutId || null;
   const isEditing = !!editingId;
+  const templateParam = route?.params?.template || null;
+  const isFromTemplate = !!templateParam;
 
-  const template = route?.params?.template || null; // seeded blocks (from template or cloned previous workout)
-  const isFromTemplate = !!template;
+  // Coming from Recent Workouts (review mode) when editing and NOT from template
+  const fromHistory = isEditing && !isFromTemplate;
 
-  // UI state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [units, setUnits] = useState('lb');
   const [blocks, setBlocks] = useState([]);
@@ -105,15 +105,16 @@ export default function TrackWorkoutScreen() {
   const [startedAt, setStartedAt] = useState(Date.now());
   const [title, setTitle] = useState(null);
 
-  // read-only view when opening an existing workout from history
-  const [readOnly, setReadOnly] = useState(isEditing);
-  const [dirty, setDirty] = useState(false);
+  // Read-only when reviewing a past workout; editable otherwise
+  const [readOnly, setReadOnly] = useState(fromHistory);
 
   const [plateBlockId, setPlateBlockId] = useState(null);
 
   const restRef = useRef(null);
   const [restTrigger, setRestTrigger] = useState(0);
-  useEffect(() => { if (restTrigger) restRef.current?.start?.(); }, [restTrigger]);
+  useEffect(() => {
+    if (restTrigger) restRef.current?.start?.();
+  }, [restTrigger]);
 
   // Header: Templates button
   useLayoutEffect(() => {
@@ -126,39 +127,36 @@ export default function TrackWorkoutScreen() {
     });
   }, [navigation]);
 
-  // Seed from a template (new workout)
+  // Seed from template if provided (and not editing)
   useEffect(() => {
-    if (!isFromTemplate) return;
+    if (!isFromTemplate || isEditing) return;
     if ((blocks?.length ?? 0) > 0) return;
 
-    const seeded = (template.blocks || []).map(({ exercise, sets }) => ({
+    const t = templateParam;
+    const seeded = (t.blocks || []).map(({ exercise, sets }) => ({
       id: uuidv4(),
       exercise,
-      // copy weights/reps but mark as not completed; add a single 0/0 at end for UX
       sets: collapseTrailingEmpties(
         (sets || [])
           .map((s) => ({
             id: uuidv4(),
             weight: Number(s.weight) || 0,
             reps: Number(s.reps) || 0,
-            completedAt: null,
-            done: false,
           }))
           .concat([{ id: uuidv4(), weight: 0, reps: 0 }])
       ),
       prevSets: [],
     }));
-    setBlocks(seeded);
-    if (template.units) setUnits(template.units);
-    setTitle(template.name || null);
-    setReadOnly(false); // new session
-    setDirty(false);
-    setWorkoutId(uuidv4());     // ensure a new id for a fresh entry
-    setStartedAt(Date.now());   // new session timing
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFromTemplate]);
 
-  // Load existing workout for editing (read-only first)
+    setBlocks(seeded);
+    if (t.units) setUnits(t.units);
+    setTitle(t.name || null);
+    setWorkoutId(uuidv4()); // fresh workout id
+    setStartedAt(Date.now()); // new session start
+    setReadOnly(false); // template flows are editable
+  }, [isFromTemplate, isEditing, templateParam]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load workout for editing (attach previous sets)
   useEffect(() => {
     let cancelled = false;
     if (isEditing) {
@@ -178,21 +176,19 @@ export default function TrackWorkoutScreen() {
           setBlocks(enriched);
           setUnits(existing.units || 'lb');
           setStartedAt(existing.startedAt || Date.now());
-          setWorkoutId(existing.id); // keep id to update in place
+          setWorkoutId(existing.id); // keep same id so we UPDATE, not create
           if (existing.title) setTitle(existing.title);
-          setReadOnly(true);
-          setDirty(false);
+          setReadOnly(true); // reviewing past workout by default
         }
       })();
     }
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isEditing, editingId]);
 
-  // ------------- add/fill helpers -------------
-
-  function markDirty() {
-    if (!dirty) setDirty(true);
-  }
+  const isEmptySet = (s) =>
+    (Number(s?.weight) || 0) === 0 && (Number(s?.reps) || 0) === 0;
 
   function appendOrFillLastSet(block, seed = { weight: 0, reps: 0 }, opts = { fromAI: false }) {
     let sets = Array.isArray(block.sets) ? block.sets.slice() : [];
@@ -205,20 +201,12 @@ export default function TrackWorkoutScreen() {
     const lastIsEmpty = last && isEmptySet(last);
 
     if (lastIsEmpty) {
-      // Fill existing empty
-      sets[sets.length - 1] = {
-        ...last,
-        weight: nextWeight,
-        reps: nextReps,
-        done: false,
-        completedAt: null,
-      };
+      sets[sets.length - 1] = { ...last, weight: nextWeight, reps: nextReps };
       if (!opts.fromAI) {
         sets.push({ id: uuidv4(), weight: 0, reps: 0 });
       }
     } else {
-      // Append new filled set
-      sets.push({ id: uuidv4(), weight: nextWeight, reps: nextReps, done: false, completedAt: null });
+      sets.push({ id: uuidv4(), weight: nextWeight, reps: nextReps });
       if (!opts.fromAI) {
         sets.push({ id: uuidv4(), weight: 0, reps: 0 });
       }
@@ -227,13 +215,10 @@ export default function TrackWorkoutScreen() {
     return { ...block, sets: collapseTrailingEmpties(sets) };
   }
 
-  // ------------- actions -------------
-
+  // Add exercise (seed from previous) — if same exercise already exists, just add a set
   async function addExercise(ex) {
-    if (readOnly) return;
     const idx = findLastBlockIndexForExercise(blocks, ex);
     if (idx >= 0) {
-      markDirty();
       setBlocks((prev) =>
         prev.map((b, i) => (i === idx ? appendOrFillLastSet(b, { weight: 0, reps: 0 }) : b))
       );
@@ -245,8 +230,6 @@ export default function TrackWorkoutScreen() {
       id: uuidv4(),
       weight: Number(ps.weight) || 0,
       reps: Number(ps.reps) || 0,
-      done: false,
-      completedAt: null,
     }));
 
     let initialSets =
@@ -256,16 +239,14 @@ export default function TrackWorkoutScreen() {
 
     initialSets = collapseTrailingEmpties(initialSets);
 
-    markDirty();
     setBlocks((prev) => [
       ...prev,
       { id: uuidv4(), exercise: ex, sets: initialSets, prevSets },
     ]);
   }
 
+  // Add AI-recommended exercise
   function addAiRecommendedExercise() {
-    if (readOnly) return;
-
     const suggestion = recommendNextExercise({ blocks, units, startedAt, workoutId });
     if (!suggestion || !suggestion.exercise) {
       Alert.alert('Need more data', 'Complete at least one set to get AI recommendations.');
@@ -273,8 +254,6 @@ export default function TrackWorkoutScreen() {
     }
 
     const idx = findLastBlockIndexForExercise(blocks, suggestion.exercise);
-
-    markDirty();
     if (idx >= 0) {
       setBlocks((prev) =>
         prev.map((b, i) =>
@@ -291,7 +270,7 @@ export default function TrackWorkoutScreen() {
     }
 
     const initialSets = [
-      { id: uuidv4(), weight: Number(suggestion.weight) || 0, reps: Number(suggestion.reps) || 0, done: false, completedAt: null },
+      { id: uuidv4(), weight: Number(suggestion.weight) || 0, reps: Number(suggestion.reps) || 0 },
     ];
 
     setBlocks((prev) => [
@@ -300,10 +279,9 @@ export default function TrackWorkoutScreen() {
     ]);
   }
 
+  // Patch set (manual flows)
   function patchSet(blockId, setId, patch) {
-    if (readOnly) return;
-    markDirty();
-
+    if (readOnly) return; // ignore in read-only
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== blockId) return b;
@@ -315,7 +293,7 @@ export default function TrackWorkoutScreen() {
         const after = { ...before, ...patch };
 
         const wasValid = (Number(before.weight) || 0) > 0 && (Number(before.reps) || 0) > 0;
-        const isValid  = (Number(after.weight)  || 0) > 0 && (Number(after.reps)  || 0) > 0;
+        const isValid = (Number(after.weight) || 0) > 0 && (Number(after.reps) || 0) > 0;
 
         const setsUpdated = b.sets.slice();
         setsUpdated[idx] = after;
@@ -342,10 +320,9 @@ export default function TrackWorkoutScreen() {
     );
   }
 
+  // Remove set; drop block if empty
   function removeSet(blockId, setId) {
-    if (readOnly) return;
-    markDirty();
-
+    if (readOnly) return; // ignore in read-only
     setBlocks((prev) => {
       const afterSetRemoval = prev.map((b) => {
         if (b.id !== blockId) return b;
@@ -353,15 +330,13 @@ export default function TrackWorkoutScreen() {
         sets = collapseTrailingEmpties(sets);
         return { ...b, sets };
       });
-      // drop block if no non-empty sets remain
       return afterSetRemoval.filter((b) => hasNonEmptySet(b.sets));
     });
   }
 
+  // Apply plate total
   function applyPlateTotal(blockId, total) {
     if (readOnly) return;
-    markDirty();
-
     setBlocks((prev) =>
       prev.map((b) => {
         if (b.id !== blockId) return b;
@@ -374,20 +349,19 @@ export default function TrackWorkoutScreen() {
     );
   }
 
-  // ------------- save / template / cancel -------------
-
+  // Save only COMPLETED sets
   async function finishOrUpdate() {
-    // If in read-only and editing an existing workout, first switch to edit mode.
-    if (isEditing && readOnly) {
-      setReadOnly(false);
-      return;
-    }
-
-    // Persist only COMPLETED sets
     const cleanedBlocks = (blocks || [])
       .map(({ id, exercise, sets }) => {
         const completedSets = (sets || []).filter(isSetCompleted);
-        return { id, exercise, sets: completedSets };
+        return {
+          id,
+          exercise,
+          sets: completedSets.map((s) => ({
+            ...s,
+            completedAt: s.completedAt ?? new Date().toISOString(),
+          })),
+        };
       })
       .filter((b) => (b.sets || []).length > 0);
 
@@ -398,17 +372,10 @@ export default function TrackWorkoutScreen() {
 
     const payload = {
       id: workoutId,
-      startedAt,                   // original when editing; new for fresh/template
+      startedAt,
       finishedAt: Date.now(),
       units,
-      blocks: cleanedBlocks.map((b) => ({
-        ...b,
-        sets: b.sets.map((s) => ({
-          ...s,
-          completedAt: s.completedAt ?? new Date().toISOString(),
-          done: true,
-        })),
-      })),
+      blocks: cleanedBlocks,
       title: title || undefined,
     };
 
@@ -420,38 +387,38 @@ export default function TrackWorkoutScreen() {
       `Exercises: ${s.exercises}\nSets: ${s.totalSets}\nVolume: ${s.totalVolume.toFixed(0)} ${units}\nDuration: ${s.durationMin} min`
     );
 
-    if (isEditing) {
-      setDirty(false);
-      setReadOnly(true);
-    } else {
-      // fresh/template – keep editing if they want to continue, or navigate away if desired
-    }
+    if (isEditing) setReadOnly(true);
   }
 
   // Save as Template modal state & handlers
   const [tplOpen, setTplOpen] = useState(false);
   const [tplName, setTplName] = useState('');
+
   async function confirmSaveTemplate() {
     const cleanedBlocks = (blocks || [])
       .map(({ exercise, sets }) => ({
         exercise,
         sets: (sets || [])
-          .filter((s) => !isEmptySet(s) && ((Number(s.weight)||0) > 0 || (Number(s.reps)||0) > 0))
-          .map((s) => ({ weight: Number(s.weight) || 0, reps: Number(s.reps) || 0 })),
+          .filter(isSetCompleted)
+          .map((s) => ({
+            weight: Number(s.weight) || 0,
+            reps: Number(s.reps) || 0,
+          })),
       }))
       .filter((b) => (b.sets || []).length > 0);
 
     if (!cleanedBlocks.length) {
-      Alert.alert('No data', 'Enter at least one non-zero set to save a template.');
+      Alert.alert('No data', 'Complete and check at least one set to save a template.');
       return;
     }
-    const name = (tplName || '').trim() || `Template ${new Date().toLocaleDateString()}`;
+    const name = tplName.trim() || `Template ${new Date().toLocaleDateString()}`;
     await saveWorkoutTemplate(name, { units, blocks: cleanedBlocks });
     setTplOpen(false);
     setTplName('');
     Alert.alert('Saved', `Template “${name}” saved.`);
   }
 
+  // Cancel workout: confirm, then discard and go to Wellness tab
   function cancelWorkout() {
     Alert.alert('Discard workout?', 'Your current entries will be lost.', [
       { text: 'Keep Editing', style: 'cancel' },
@@ -461,7 +428,10 @@ export default function TrackWorkoutScreen() {
         onPress: () => {
           try {
             const routes = require('../navigation/routes');
-            if (routes?.goHome) return routes.goHome(navigation);
+            if (routes?.goHome) {
+              routes.goHome(navigation);
+              return;
+            }
           } catch {}
           navigation.navigate('Wellness');
         },
@@ -482,13 +452,49 @@ export default function TrackWorkoutScreen() {
     </View>
   );
 
-  const primaryBtnLabel = useMemo(() => {
-    if (isEditing) {
-      if (readOnly && !dirty) return 'Edit';
-      return 'Update';
+  // ===== New: Start this workout (from a past workout) =====
+  const canStartFromHistory = readOnly && fromHistory;
+
+  function startThisWorkoutFromHistory() {
+    const tempTemplate = {
+      name: title || `From ${new Date(startedAt || Date.now()).toLocaleDateString()}`,
+      units,
+      blocks: (blocks || [])
+        .map(({ exercise, sets }) => ({
+          exercise,
+          sets: (sets || [])
+            .filter(isSetCompleted)
+            .map((s) => ({
+              weight: Number(s.weight) || 0,
+              reps: Number(s.reps) || 0,
+            })),
+        }))
+        .filter((b) => (b.sets || []).length > 0),
+    };
+
+    if (!tempTemplate.blocks.length) {
+      Alert.alert('Nothing to start', 'This workout has no completed sets to start from.');
+      return;
     }
-    return 'Finish & Save';
-  }, [isEditing, readOnly, dirty]);
+
+    // Push a fresh TrackWorkout screen with the template param (same as picking a saved template)
+    navigation.push('TrackWorkout', { template: tempTemplate });
+  }
+
+  // NEW: Cancel and return to Train Starter (only in fromHistory read-only view)
+  function cancelAndReturnToStarter() {
+    try {
+      const routes = require('../navigation/routes');
+      if (routes?.goTrainStarter) {
+        routes.goTrainStarter(navigation);
+        return;
+      }
+    } catch {}
+    navigation.navigate('Train', { screen: 'TrainStarter' });
+  }
+
+  const primaryBtnLabel = readOnly ? 'Edit' : isEditing ? 'Update' : 'Finish & Save';
+  const showAddExerciseRow = !readOnly;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }}>
@@ -501,11 +507,9 @@ export default function TrackWorkoutScreen() {
           <Card style={{ padding: spacing(2) }}>
             <Text style={styles.title}>Exercises</Text>
 
-            {(!blocks || blocks.length === 0) && (
-              <Text style={{ opacity: 0.7, marginBottom: spacing(1) }}>
-                No exercises yet. Add one to begin.
-              </Text>
-            )}
+            {blocks.length === 0 ? (
+              <Text style={{ opacity: 0.7 }}>No exercises yet. Add one to begin.</Text>
+            ) : null}
 
             {blocks.map((b) => (
               <View key={b.id} style={{ marginBottom: spacing(2) }}>
@@ -525,7 +529,8 @@ export default function TrackWorkoutScreen() {
                       {b.exercise?.name || 'Exercise'}
                     </Text>
 
-                    {isBarbellExercise(b.exercise) && !readOnly && (
+                    {/* Plate calculator only for Barbell (hide in readOnly) */}
+                    {!readOnly && isBarbellExercise(b.exercise) && (
                       <Pressable
                         onPress={() => setPlateBlockId(b.id)}
                         hitSlop={8}
@@ -543,63 +548,67 @@ export default function TrackWorkoutScreen() {
                   </View>
                 </View>
 
-                {b.sets.map((s, i) => (
-                  <Swipeable
-                    key={s.id}
-                    renderRightActions={() => (!readOnly ? renderRightActions(b.id, s.id) : null)}
-                    rightThreshold={40}
-                    overshootRight={false}
-                  >
+                {b.sets.map((s, i) => {
+                  const row = (
                     <SetRow
+                      key={s.id}
                       index={i}
                       exercise={b.exercise}
                       set={s}
                       units={units}
-                      readOnly={readOnly}
                       prevSameIndex={b.prevSets ? b.prevSets[i] : null}
+                      readOnly={readOnly}
                       onChange={(patch) => patchSet(b.id, s.id, patch)}
                       onRemove={() => removeSet(b.id, s.id)}
                       onToggleComplete={(done) =>
                         patchSet(b.id, s.id, {
                           completedAt: done ? new Date().toISOString() : null,
-                          done,
                         })
                       }
                     />
-                  </Swipeable>
-                ))}
+                  );
+                  return readOnly ? (
+                    <View key={s.id}>{row}</View>
+                  ) : (
+                    <Swipeable
+                      key={s.id}
+                      renderRightActions={() => renderRightActions(b.id, s.id)}
+                      rightThreshold={40}
+                      overshootRight={false}
+                    >
+                      {row}
+                    </Swipeable>
+                  );
+                })}
               </View>
             ))}
 
-            {/* Actions row: ALWAYS visible; disabled in read-only */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 10, marginTop: spacing(1) }}>
-              <View style={{ flex: 1 }}>
-                <GradientButton
-                  title="Add Exercise"
-                  onPress={() => setPickerOpen(true)}
-                  disabled={readOnly}
-                />
-              </View>
+            {/* Actions row: Add Exercise + small circular AI button (HIDE in readOnly) */}
+            {showAddExerciseRow && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', columnGap: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <GradientButton title="Add Exercise" onPress={() => setPickerOpen(true)} />
+                </View>
 
-              <Pressable
-                onPress={addAiRecommendedExercise}
-                accessibilityLabel="AI Recommendation"
-                style={[styles.aiBtn, readOnly && { opacity: 0.4 }]}
-                hitSlop={6}
-                disabled={readOnly}
-              >
-                <Text style={styles.aiBtnText}>AI</Text>
-              </Pressable>
-            </View>
+                <Pressable
+                  onPress={addAiRecommendedExercise}
+                  accessibilityLabel="AI Recommendation"
+                  style={styles.aiBtn}
+                  hitSlop={6}
+                >
+                  <Text style={styles.aiBtnText}>AI</Text>
+                </Pressable>
+              </View>
+            )}
           </Card>
 
-          {/* Rest Timer */}
+          {/* Prominent Rest Timer */}
           <Card style={{ padding: spacing(2) }}>
             <Text style={styles.title}>Rest Timer</Text>
             <RestTimer ref={restRef} seconds={90} />
           </Card>
 
-          {/* Session Summary + Primary CTA + Links */}
+          {/* Session Summary + Buttons */}
           <Card style={{ padding: spacing(2) }}>
             <WorkoutSessionSummary
               blocks={blocks}
@@ -607,29 +616,59 @@ export default function TrackWorkoutScreen() {
               showFinish={false}
               showTitle={true}
               titleOverride={title || undefined}
+              readOnly={readOnly}
+            />
+            <View style={{ height: spacing(1) }} />
+
+            {/* Primary button */}
+            <GradientButton
+              title={primaryBtnLabel}
+              onPress={() => {
+                if (readOnly) {
+                  setReadOnly(false); // enter edit mode on history workout
+                } else {
+                  finishOrUpdate();
+                }
+              }}
             />
 
-            <View style={{ height: spacing(1) }} />
-            <GradientButton title={primaryBtnLabel} onPress={finishOrUpdate} />
-
+            {/* Secondary actions */}
             <View style={{ alignItems: 'center', gap: 10, marginTop: spacing(1) }}>
-              <Pressable onPress={() => setTplOpen(true)} hitSlop={6}>
-                <Text style={styles.linkPrimary}>Save as Template</Text>
-              </Pressable>
-              <Pressable onPress={cancelWorkout} hitSlop={6}>
-                <Text style={styles.linkDanger}>Cancel Workout</Text>
-              </Pressable>
+              {!readOnly && (
+                <>
+                  <Pressable onPress={() => setTplOpen(true)} hitSlop={6}>
+                    <Text style={styles.linkPrimary}>Save as Template</Text>
+                  </Pressable>
+                  <Pressable onPress={cancelWorkout} hitSlop={6}>
+                    <Text style={styles.linkDanger}>Cancel Workout</Text>
+                  </Pressable>
+                </>
+              )}
+
+              {/* NEW: Start this workout + Cancel and Return (only when viewing from history) */}
+              {canStartFromHistory && (
+                <>
+                  <Pressable onPress={startThisWorkoutFromHistory} hitSlop={6}>
+                    <Text style={styles.linkPrimary}>Start this workout</Text>
+                  </Pressable>
+                  <Pressable onPress={cancelAndReturnToStarter} hitSlop={6}>
+                    <Text style={styles.linkPrimary}>Cancel and Return</Text>
+                  </Pressable>
+                </>
+              )}
             </View>
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* Full-screen picker modal */}
       <ExercisePickerModal
-        visible={pickerOpen}
+        visible={pickerOpen && !readOnly}
         onClose={() => setPickerOpen(false)}
         onPick={addExercise}
       />
 
+      {/* Shared Plate Calculator modal */}
       <PlateCalculatorModal
         visible={!!plateBlockId}
         onClose={() => setPlateBlockId(null)}
