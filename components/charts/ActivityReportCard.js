@@ -1,9 +1,11 @@
 // components/charts/ActivityReportCard.js
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 import Card from '../ui/Card';
 import { palette, spacing } from '../../theme';
+import { writeSteps7 } from '../../utils/healthSteps';
 
 // Optional HealthKit (guarded)
 let AppleHealthKit = null;
@@ -76,11 +78,17 @@ async function fetchHealthKit7() {
   const opts = { startDate: dayStart(days[0]).toISOString(), endDate: dayEnd(days[6]).toISOString(), includeManuallyAdded: true };
   const samples = await new Promise(res => AppleHealthKit.getDailyStepCountSamples(opts, (err, results) => res(err ? [] : results || [])));
 
+  // Build a map keyed by LOCAL date (avoid UTC slice off-by-one)
   const map = Object.create(null);
   samples.forEach(r => {
-    const k = r.startDate?.slice(0, 10);
-    if (!k) return;
-    map[k] = (map[k] || 0) + (typeof r.value === 'number' ? r.value : 0);
+    if (!r?.startDate) return;
+    const dt = new Date(r.startDate);
+    const y  = dt.getFullYear();
+    const m  = String(dt.getMonth() + 1).padStart(2, '0');
+    const d  = String(dt.getDate()).padStart(2, '0');
+    const k  = `${y}-${m}-${d}`;
+    const val = typeof r.value === 'number' ? r.value : 0;
+    map[k] = (map[k] || 0) + val;
   });
 
   const out = days.map(d => {
@@ -91,7 +99,7 @@ async function fetchHealthKit7() {
     return Math.round(map[key] || 0);
   });
 
-  try { await AsyncStorage.setItem('WidgetTwoHealth:steps7', JSON.stringify(out)); } catch {}
+  try { await writeSteps7(out); } catch {}
   return out;
 }
 function ensure7(arr) {
@@ -306,7 +314,7 @@ function LineChartInteractive({ labels, points, showYAxis = true }) {
         ))}
       </View>
 
-      {/* Tooltip (positioned near the dot; no fixed bottom anymore) */}
+      {/* Tooltip */}
       {hover && hover.value != null && (
         <View
           style={{
@@ -324,7 +332,7 @@ function LineChartInteractive({ labels, points, showYAxis = true }) {
         </View>
       )}
 
-      {/* Touch handler overlay (inner chart area only) */}
+      {/* Touch handler overlay */}
       <View
         ref={hitboxRef}
         style={{ position: 'absolute', left: AXIS_W, right: 0, top: 0, bottom: BOT_H }}
@@ -342,23 +350,27 @@ function LineChartInteractive({ labels, points, showYAxis = true }) {
 export default function ActivityReportCard() {
   const [steps, setSteps] = useState(Array(7).fill(0));
 
+  const load = useCallback(async () => {
+    const cached = await readCachedSteps7();
+    if (cached && cached.length) {
+      setSteps(ensure7(cached));
+      // Continue to try fresh HK in background for next view
+    }
+    const hk = await fetchHealthKit7();
+    if (hk && hk.length) {
+      setSteps(ensure7(hk));
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
-    const load = async () => {
-      const cached = await readCachedSteps7();
-      if (mounted && cached && cached.length) {
-        setSteps(ensure7(cached));
-        return;
-      }
-      const hk = await fetchHealthKit7();
-      if (mounted && hk && hk.length) {
-        setSteps(ensure7(hk));
-      }
-    };
     load();
     const sub = AppState.addEventListener('change', (st) => { if (st === 'active') load(); });
     return () => { mounted = false; sub.remove(); };
-  }, []);
+  }, [load]);
+
+  // Refresh when screen gains focus (fixes "stale after navigating back" in release)
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const labels = useMemo(() => {
     const today = new Date(); today.setHours(0,0,0,0);

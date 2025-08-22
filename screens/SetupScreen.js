@@ -1,6 +1,19 @@
 // screens/SetupScreen.js
-import React, { useState } from 'react';
-import { ScrollView, View, Text, Alert, Share, Platform, Modal, Pressable, TextInput, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  ScrollView,
+  View,
+  Text,
+  Alert,
+  Share,
+  Platform,
+  Modal,
+  Pressable,
+  TextInput,
+  StyleSheet,
+  Switch,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -8,6 +21,10 @@ import Card from '../components/ui/Card';
 import GradientButton from '../components/ui/GradientButton';
 import { palette, spacing, layout } from '../theme';
 import { getAllWorkouts } from '../store/workoutStore';
+import { loadTestData } from '../utils/loadTestData';
+
+// ---------- constants (settings) ----------
+const SETTINGS_KEY = 'settings:training';
 
 // ---------- helpers (export) ----------
 const isCompleted = (s) =>
@@ -181,21 +198,79 @@ async function deleteAllDataHard() {
     // Final fallback: nuke everything persisted by the app
     await AsyncStorage.clear();
   } catch {
-    // Even if a particular call fails, we tried our best—surface a generic error.
     throw new Error('Failed to fully clear local storage.');
   }
 }
 
+/** Tiny inline toast (no deps) */
+function TinyToast({ message, visible }) {
+  if (!visible) return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: 16,
+        right: 16,
+        bottom: 24,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        backgroundColor: 'rgba(17,24,39,0.92)',
+      }}
+    >
+      <Text style={{ color: 'white', fontWeight: '700', fontSize: 12 }}>{message}</Text>
+    </View>
+  );
+}
+
 // ---------- screen ----------
 export default function SetupScreen() {
+  const navigation = useNavigation();
+
   const [busy, setBusy] = useState(false);
   const [lastExportInfo, setLastExportInfo] = useState(null);
 
+  // Delete modal
   const [delOpen, setDelOpen] = useState(false);
   const [delText, setDelText] = useState('');
   const [delBusy, setDelBusy] = useState(false);
   const EXACT = 'I UnDeRsTaNd';
 
+  // Training settings
+  const [plateRounding, setPlateRounding] = useState('lb5'); // 'lb5' | 'kg2.5'
+  const [adoptRestHints, setAdoptRestHints] = useState(true);
+
+  // Toast state
+  const [toast, setToast] = useState('');
+
+  // Load persisted settings
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SETTINGS_KEY);
+        if (raw) {
+          const s = JSON.parse(raw);
+          if (s && typeof s === 'object') {
+            if (s.plateRounding) setPlateRounding(s.plateRounding);
+            if ('adoptRestHints' in s) setAdoptRestHints(!!s.adoptRestHints);
+          }
+        }
+      } catch {}
+    })();
+  }, []);
+
+  async function saveSettings() {
+    try {
+      const payload = { plateRounding, adoptRestHints };
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
+      Alert.alert('Saved', 'Training settings updated.');
+    } catch {
+      Alert.alert('Save failed', 'Could not save settings. Please try again.');
+    }
+  }
+
+  // --- Export actions ---
   async function exportCSV() {
     try {
       setBusy(true);
@@ -257,123 +332,197 @@ export default function SetupScreen() {
     }
   }
 
+  // --- NEW: load test data + deep link to Progress ---
+  const onLoadTestData = useCallback(async () => {
+    try {
+      setBusy(true);
+      const { count } = await loadTestData({ units: 'lb', overwrite: true, includeTemplates: true });
+      // transient toast
+      setToast(`Loaded ${count} workouts + templates`);
+      setTimeout(() => setToast(''), 2000);
+
+      Alert.alert(
+        'Test data loaded',
+        `${count} workouts + templates added.`,
+        [
+          { text: 'Stay here', style: 'cancel' },
+          { text: 'View Progress', onPress: () => navigation.navigate('Progress') },
+        ]
+      );
+    } catch (e) {
+      Alert.alert('Error', String(e?.message || e));
+    } finally {
+      setBusy(false);
+    }
+  }, [navigation]);
+
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: palette.bg }}
-      contentContainerStyle={{
-        paddingHorizontal: layout.screenHMargin,
-        paddingTop: spacing(2),
-        paddingBottom: spacing(4),
-        gap: spacing(2),
-      }}
-    >
-      {/* Export widget */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
-          Data Export
-        </Text>
-        <Text style={{ color: palette.sub, marginTop: 6 }}>
-          Export your full training history (completed sets only) for backup or migration.
-          CSV opens in spreadsheets; JSON is developer-friendly.
-        </Text>
+    <View style={{ flex: 1, backgroundColor: palette.bg }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: layout.screenHMargin,
+          paddingTop: spacing(2),
+          paddingBottom: spacing(4),
+          gap: spacing(2),
+        }}
+      >
+        {/* Export widget */}
+        <Card style={{ padding: spacing(2) }}>
+          <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
+            Data Export
+          </Text>
+          <Text style={{ color: palette.sub, marginTop: 6 }}>
+            Export your full training history (completed sets only) for backup or migration.
+            CSV opens in spreadsheets; JSON is developer-friendly.
+          </Text>
 
-        <View style={{ height: spacing(1.5) }} />
+          <View style={{ height: spacing(1.5) }} />
 
-        <GradientButton
-          title={busy ? 'Exporting…' : 'Export as CSV'}
-          onPress={exportCSV}
-          disabled={busy}
-        />
-        <View style={{ height: spacing(1) }} />
-        <GradientButton
-          title={busy ? 'Exporting…' : 'Export as JSON'}
-          onPress={exportJSON}
-          disabled={busy}
-        />
+          <GradientButton
+            title={busy ? 'Exporting…' : 'Export as CSV'}
+            onPress={exportCSV}
+            disabled={busy}
+          />
+          <View style={{ height: spacing(1) }} />
+          <GradientButton
+            title={busy ? 'Exporting…' : 'Export as JSON'}
+            onPress={exportJSON}
+            disabled={busy}
+          />
 
-        {lastExportInfo && (
-          <View style={{ marginTop: spacing(1.5) }}>
-            <Text style={{ color: palette.sub, fontSize: 12 }}>
-              Last export: {lastExportInfo.kind} • {lastExportInfo.count} rows
-            </Text>
-            <Text style={{ color: palette.sub, fontSize: 12 }}>
-              Saved at: {lastExportInfo.uri}
-            </Text>
+          {lastExportInfo && (
+            <View style={{ marginTop: spacing(1.5) }}>
+              <Text style={{ color: palette.sub, fontSize: 12 }}>
+                Last export: {lastExportInfo.kind} • {lastExportInfo.count} rows
+              </Text>
+              <Text style={{ color: palette.sub, fontSize: 12 }}>
+                Saved at: {lastExportInfo.uri}
+              </Text>
+            </View>
+          )}
+        </Card>
+
+        {/* Rep.AI / Training Settings */}
+        <Card style={{ padding: spacing(2) }}>
+          <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
+            Rep.AI / Training Settings
+          </Text>
+
+          <View style={{ height: spacing(1) }} />
+
+          <Text style={{ color: palette.text, fontWeight: '800' }}>Plate rounding</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+            <Pressable onPress={() => setPlateRounding('lb5')} hitSlop={6}>
+              <Text style={{ color: plateRounding === 'lb5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
+                Nearest 5 lb
+              </Text>
+            </Pressable>
+            <Pressable onPress={() => setPlateRounding('kg2.5')} hitSlop={6}>
+              <Text style={{ color: plateRounding === 'kg2.5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
+                Nearest 2.5 kg
+              </Text>
+            </Pressable>
           </View>
-        )}
-      </Card>
 
-      {/* What's included */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          What’s included
-        </Text>
-        <View style={{ height: 8 }} />
-        <Text style={{ color: palette.sub }}>
-          • Workout meta: ID, start/end time, title, units{'\n'}
-          • Exercise meta: ID, name, muscle group, equipment, icon{'\n'}
-          • Set data: set number, weight, reps, volume, e1RM, completion time{'\n'}
-          • Optional: RPE, perceived difficulty, notes (if present)
-        </Text>
-      </Card>
+          <View style={{ height: spacing(1) }} />
 
-      {/* Danger Zone */}
-      <Card style={{ padding: spacing(2), borderColor: '#fecaca', borderWidth: StyleSheet.hairlineWidth }}>
-        <Text style={{ color: '#991B1B', fontSize: 18, fontWeight: '900', marginBottom: spacing(1) }}>
-          Danger Zone
-        </Text>
-        <Text style={{ color: palette.sub, marginBottom: spacing(1) }}>
-          Permanently delete all locally stored data (workouts, templates, check-ins, and preferences).
-          This action cannot be undone.
-        </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ color: palette.text, fontWeight: '800' }}>Adopt rest-timer hints</Text>
+            <Switch value={adoptRestHints} onValueChange={setAdoptRestHints} />
+          </View>
 
-        <Pressable
-          onPress={() => setDelOpen(true)}
-          style={styles.dangerBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Delete all data"
-        >
-          <Text style={styles.dangerBtnText}>Delete All Data</Text>
-        </Pressable>
-      </Card>
+          <View style={{ height: spacing(1) }} />
+          <GradientButton title="Save Settings" onPress={saveSettings} />
+        </Card>
 
-      {/* Confirm Delete Modal */}
-      <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => setDelOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Type the confirmation to proceed</Text>
-            <Text style={{ color: palette.sub, marginBottom: 8 }}>
-              Please type <Text style={{ fontWeight: '900', color: palette.text }}>{EXACT}</Text> exactly to confirm.
-            </Text>
-            <TextInput
-              value={delText}
-              onChangeText={setDelText}
-              placeholder={EXACT}
-              placeholderTextColor="#9CA3AF"
-              style={styles.input}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
-              <Pressable onPress={() => { setDelOpen(false); setDelText(''); }} disabled={delBusy}>
-                <Text style={styles.modalBtn}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={confirmDeleteAll}
-                disabled={delBusy || delText !== EXACT}
-                style={[
-                  styles.modalDelete,
-                  { opacity: delBusy || delText !== EXACT ? 0.5 : 1 },
-                ]}
-              >
-                <Text style={styles.modalDeleteText}>{delBusy ? 'Deleting…' : 'Delete'}</Text>
-              </Pressable>
+        {/* What's included */}
+        <Card style={{ padding: spacing(2) }}>
+          <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
+            What’s included
+          </Text>
+          <View style={{ height: 8 }} />
+          <Text style={{ color: palette.sub }}>
+            • Workout meta: ID, start/end time, title, units{'\n'}
+            • Exercise meta: ID, name, muscle group, equipment, icon{'\n'}
+            • Set data: set number, weight, reps, volume, e1RM, completion time{'\n'}
+            • Optional: RPE, perceived difficulty, notes (if present)
+          </Text>
+        </Card>
+
+        {/* Danger Zone */}
+        <Card style={{ padding: spacing(2), borderColor: '#fecaca', borderWidth: StyleSheet.hairlineWidth }}>
+          <Text style={{ color: '#991B1B', fontSize: 18, fontWeight: '900', marginBottom: spacing(1) }}>
+            Danger Zone
+          </Text>
+          <Text style={{ color: palette.sub, marginBottom: spacing(1) }}>
+            Permanently delete all locally stored data (workouts, templates, check-ins, and preferences).
+            This action cannot be undone.
+          </Text>
+
+          <Pressable
+            onPress={() => setDelOpen(true)}
+            style={styles.dangerBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Delete all data"
+          >
+            <Text style={styles.dangerBtnText}>Delete All Data</Text>
+          </Pressable>
+
+          {/* NEW: Load test data (directly below delete) */}
+          <View style={{ height: spacing(1) }} />
+          <GradientButton
+            title={busy ? 'Loading…' : 'Load test data'}
+            onPress={onLoadTestData}
+            disabled={busy}
+            colors={['#10b981', '#059669']}
+          />
+          <Text style={{ color: palette.sub, marginTop: 6, fontSize: 12 }}>
+            Loads ~3+ sessions per muscle group over ~3 weeks, plus a few templates.
+          </Text>
+        </Card>
+
+        {/* Confirm Delete Modal */}
+        <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => setDelOpen(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Type the confirmation to proceed</Text>
+              <Text style={{ color: palette.sub, marginBottom: 8 }}>
+                Please type <Text style={{ fontWeight: '900', color: palette.text }}>{EXACT}</Text> exactly to confirm.
+              </Text>
+              <TextInput
+                value={delText}
+                onChangeText={setDelText}
+                placeholder={EXACT}
+                placeholderTextColor="#9CA3AF"
+                style={styles.input}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+              />
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+                <Pressable onPress={() => { setDelOpen(false); setDelText(''); }} disabled={delBusy}>
+                  <Text style={styles.modalBtn}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={confirmDeleteAll}
+                  disabled={delBusy || delText !== EXACT}
+                  style={[
+                    styles.modalDelete,
+                    { opacity: delBusy || delText !== EXACT ? 0.5 : 1 },
+                  ]}
+                >
+                  <Text style={styles.modalDeleteText}>{delBusy ? 'Deleting…' : 'Delete'}</Text>
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
+        </Modal>
+      </ScrollView>
+
+      {/* Inline toast */}
+      <TinyToast message={toast} visible={!!toast} />
+    </View>
   );
 }
 

@@ -1,13 +1,19 @@
 // screens/TrainStarterScreen.js
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+
 import Card from '../components/ui/Card';
 import { palette, spacing, layout } from '../theme';
 
+import { getAllWorkouts } from '../store/workoutStore';
+import { generatePlan } from '../utils/repAIPlanner';
+
 export default function TrainStarterScreen() {
   const navigation = useNavigation();
+  const [busyAI, setBusyAI] = useState(false);
 
+  // 1) Previous Workout Pattern → Progress screen (scroll to Recent Workouts)
   const goPreviousPattern = () => {
     try {
       const routes = require('../navigation/routes');
@@ -16,19 +22,53 @@ export default function TrainStarterScreen() {
         return;
       }
     } catch {}
-    navigation.navigate('Progress', { screen: 'ProgressHome', params: { selectPattern: true } });
+    navigation.navigate('Progress', {
+      screen: 'ProgressHome',
+      params: { selectPattern: true },
+    });
   };
 
+  // 2) Saved Template → Template list
   const goTemplates = () => {
     navigation.navigate('WorkoutTemplates');
   };
 
+  // 3) Blank Workout → TrackWorkoutScreen with marker
   const goBlank = () => {
-    navigation.navigate('TrackWorkout'); // fresh session
+    navigation.navigate('TrackWorkout', { isBlank: true });
   };
 
-  const goAIRecommended = () => {
-    Alert.alert('Coming soon', 'Rep.AI Recommended is not available yet.');
+  // 4) Rep.AI Recommended → generate plan like Planning screen, then preview
+  const goAIRecommended = async () => {
+    if (busyAI) return;
+    try {
+      setBusyAI(true);
+
+      const history = await getAllWorkouts();
+      const vitals = {}; // plug in readiness/soreness if available
+
+      const plan = generatePlan({
+        history,
+        goals: 'hypertrophy',          // or pull from user setting
+        split: 'upper',                // or current selection
+        timeBudgetMin: 50,
+        equipment: ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight'],
+        vitals,
+        settings: {
+          units: history?.[0]?.units || 'lb',
+          plateIncrementLb: 5,
+          plateIncrementKg: 2.5,
+        },
+        seed: Date.now(),
+      });
+
+      // We are inside Train stack already → direct navigate
+      navigation.navigate('PreviewRecommended', { plan, source: 'train_starter' });
+    } catch (e) {
+      Alert.alert('Rep.AI failed', String(e?.message || e));
+    } finally {
+      setBusyAI(false);
+    }
   };
 
   return (
@@ -52,92 +92,73 @@ export default function TrainStarterScreen() {
         <View style={{ height: spacing(1.5) }} />
 
         {/* 1) Previous Workout Pattern */}
-        <Pressable
-          onPress={goPreviousPattern}
-          style={{
-            paddingVertical: 14,
-            borderBottomWidth: 1,
-            borderBottomColor: 'rgba(0,0,0,0.06)',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Pressable onPress={goPreviousPattern} style={rowStyle}>
+          <View style={iconTextRow}>
             <Text style={{ fontSize: 18 }}>📜</Text>
             <View>
-              <Text style={{ color: palette.text, fontWeight: '800' }}>Previous Workout Pattern</Text>
-              <Text style={{ color: palette.sub, fontSize: 12 }}>Pick from your recent sessions</Text>
+              <Text style={titleStyle}>Previous Workout Pattern</Text>
+              <Text style={subtitleStyle}>Pick from your recent sessions</Text>
             </View>
           </View>
-          <Text style={{ color: palette.sub, fontSize: 18 }}>{'›'}</Text>
+          <Text style={chevronStyle}>{'›'}</Text>
         </Pressable>
 
         {/* 2) Saved Template */}
-        <Pressable
-          onPress={goTemplates}
-          style={{
-            paddingVertical: 14,
-            borderBottomWidth: 1,
-            borderBottomColor: 'rgba(0,0,0,0.06)',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Pressable onPress={goTemplates} style={rowStyle}>
+          <View style={iconTextRow}>
             <Text style={{ fontSize: 18 }}>🧩</Text>
             <View>
-              <Text style={{ color: palette.text, fontWeight: '800' }}>Saved Template</Text>
-              <Text style={{ color: palette.sub, fontSize: 12 }}>Start from a pre-defined plan</Text>
+              <Text style={titleStyle}>Saved Template</Text>
+              <Text style={subtitleStyle}>Start from a pre-defined plan</Text>
             </View>
           </View>
-          <Text style={{ color: palette.sub, fontSize: 18 }}>{'›'}</Text>
+          <Text style={chevronStyle}>{'›'}</Text>
         </Pressable>
 
         {/* 3) Blank Workout */}
-        <Pressable
-          onPress={goBlank}
-          style={{
-            paddingVertical: 14,
-            borderBottomWidth: 1,
-            borderBottomColor: 'rgba(0,0,0,0.06)',
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <Pressable onPress={goBlank} style={rowStyle}>
+          <View style={iconTextRow}>
             <Text style={{ fontSize: 18 }}>🆕</Text>
             <View>
-              <Text style={{ color: palette.text, fontWeight: '800' }}>Blank Workout</Text>
-              <Text style={{ color: palette.sub, fontSize: 12 }}>Start with an empty session</Text>
+              <Text style={titleStyle}>Blank Workout</Text>
+              <Text style={subtitleStyle}>Start with an empty session</Text>
             </View>
           </View>
-          <Text style={{ color: palette.sub, fontSize: 18 }}>{'›'}</Text>
+          <Text style={chevronStyle}>{'›'}</Text>
         </Pressable>
 
-        {/* 4) Rep.AI Recommended (disabled for now) */}
+        {/* 4) Rep.AI Recommended (same logic as Planning) */}
         <Pressable
           onPress={goAIRecommended}
-          style={{
-            paddingVertical: 14,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            opacity: 0.5,
-          }}
+          style={[rowStyle, busyAI && { opacity: 0.6 }]}
+          disabled={busyAI}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={iconTextRow}>
             <Text style={{ fontSize: 18 }}>🤖</Text>
             <View>
-              <Text style={{ color: palette.text, fontWeight: '800' }}>Rep.AI Recommended</Text>
-              <Text style={{ color: palette.sub, fontSize: 12 }}>Coming soon</Text>
+              <Text style={titleStyle}>Rep.AI Recommended</Text>
+              <Text style={subtitleStyle}>
+                {busyAI ? 'Planning…' : 'Smart plan for today'}
+              </Text>
             </View>
           </View>
-          <Text style={{ color: palette.sub, fontSize: 18 }}>{'›'}</Text>
+          <Text style={chevronStyle}>{busyAI ? '…' : '›'}</Text>
         </Pressable>
       </Card>
     </ScrollView>
   );
 }
+
+// Reusable row styles
+const rowStyle = {
+  paddingVertical: 14,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(0,0,0,0.06)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+};
+const iconTextRow = { flexDirection: 'row', alignItems: 'center', gap: 10 };
+const titleStyle = { color: palette.text, fontWeight: '800' };
+const subtitleStyle = { color: palette.sub, fontSize: 12 };
+const chevronStyle = { color: palette.sub, fontSize: 18 };

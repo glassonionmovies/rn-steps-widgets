@@ -1,6 +1,5 @@
 // screens/TrackWorkoutScreen.js
-import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
-import WorkoutSessionSummary from '../components/workout/WorkoutSessionSummary';
+import React, { useEffect, useRef, useState, useLayoutEffect, useMemo } from 'react';
 
 import {
   SafeAreaView,
@@ -34,6 +33,9 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 import { recommendNextExercise } from '../utils/realtimeExerciseRecommender';
 import { saveWorkoutTemplate } from '../store/templateStore';
+
+// ✅ Reusable preview card (same visuals as Recent Workouts)
+import WorkoutSessionPreviewCard from '../components/workout/WorkoutSessionPreviewCard';
 
 function isBarbellExercise(ex) {
   const eq = (ex?.equipment || '').toLowerCase();
@@ -439,6 +441,17 @@ export default function TrackWorkoutScreen() {
 
   const primaryBtnLabel = isEditing ? 'Update' : 'Finish & Save';
 
+  // 🔁 Build a preview-shaped workout for the reusable card (no completedAt needed here)
+  const workoutPreview = useMemo(
+    () => ({
+      id: workoutId,
+      title: title || 'Current Session',
+      units,
+      blocks,
+    }),
+    [workoutId, title, units, blocks]
+  );
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }}>
       <KeyboardAvoidingView
@@ -446,7 +459,7 @@ export default function TrackWorkoutScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={{ padding: spacing(2), rowGap: spacing(1.5) }}>
-          {/* Exercises + Set list */}
+          {/* Exercises + Set list (editable) */}
           <Card style={{ padding: spacing(2) }}>
             <Text style={styles.title}>Exercises</Text>
 
@@ -540,16 +553,17 @@ export default function TrackWorkoutScreen() {
             <RestTimer ref={restRef} seconds={90} />
           </Card>
 
-          {/* Session Summary + Finish/Update + Links */}
+          {/* Session Preview (reusable card) + Finish/Update + Links */}
+          <WorkoutSessionPreviewCard
+            title={workoutPreview.title}
+            // Optional subtitle consistency: show sets/volume are already in the card,
+            // so we can leave subtitle empty or show a small hint:
+            // subtitle={isEditing ? 'Editing saved workout' : 'Live session preview'}
+            workout={workoutPreview}
+            // onPress omitted here since we are already on TrackWorkout
+          />
+
           <Card style={{ padding: spacing(2) }}>
-            <WorkoutSessionSummary
-              blocks={blocks}
-              units={units}
-              showFinish={false}
-              showTitle={true}
-              titleOverride={title || undefined}
-            />
-            <View style={{ height: spacing(1) }} />
             <GradientButton title={primaryBtnLabel} onPress={finishOrUpdate} />
             <View style={{ alignItems: 'center', gap: 10, marginTop: spacing(1) }}>
               <Pressable onPress={() => setTplOpen(true)} hitSlop={6}>
