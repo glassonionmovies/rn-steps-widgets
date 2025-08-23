@@ -1,92 +1,127 @@
 // components/workout/WorkoutSessionPreviewCard.js
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text } from 'react-native';
 import Card from '../ui/Card';
 import { palette, spacing } from '../../theme';
 
 /**
- * Reusable workout preview.
- * - Shows each exercise with optional icon and its sets inline.
- * - By default wraps content in a Card. Pass `noCard` to render flat.
- *
  * Props:
- *  - workout: { units?: 'lb'|'kg', blocks: [{ id, exercise:{ name, icon? }, sets:[{ reps, weight }] }] }
- *  - onPress?: () => void
- *  - noCard?: boolean  -> when true, renders without the Card wrapper
+ * - title?: string
+ * - blocks: Array<{ exercise: { id, name, muscleGroup, equipment, pattern, icon? }, sets: Array<{ weight, reps }> }>
+ * - units: 'lb' | 'kg'
+ * - compact?: boolean  // if true, tighter spacing
+ * - showCard?: boolean // default true; when false, returns inner layout without the Card wrapper
  */
-export default function WorkoutSessionPreviewCard({ workout, onPress, noCard = false }) {
-  const units = workout?.units || 'lb';
-  const blocks = Array.isArray(workout?.blocks) ? workout.blocks : [];
-  if (blocks.length === 0) return null;
+export default function WorkoutSessionPreviewCard({
+  title,
+  blocks = [],
+  units = 'lb',
+  compact = false,
+  showCard = true,
+}) {
+  const safeBlocks = useMemo(
+    () =>
+      (Array.isArray(blocks) ? blocks : [])
+        .map((b, i) => {
+          const ex = b?.exercise || {};
+          const sets = Array.isArray(b?.sets) ? b.sets : [];
+          return {
+            id: String(b?.id ?? `blk_${i}`),
+            exercise: {
+              id: String(ex?.id ?? `ex_${i}`),
+              name: String(ex?.name ?? 'Exercise'),
+              muscleGroup: String(ex?.muscleGroup ?? ''),
+              equipment: String(ex?.equipment ?? ''),
+              pattern: String(ex?.pattern ?? ''),
+              icon: ex?.icon ?? null,
+            },
+            sets: sets
+              .map((s, si) => ({
+                id: String(s?.id ?? `${i}_${si}`),
+                weight: Number(s?.weight) || 0,
+                reps: Number(s?.reps) || 0,
+              }))
+              .filter((s) => Number.isFinite(s.weight) && Number.isFinite(s.reps)),
+          };
+        })
+        .filter((b) => (b.sets?.length || 0) > 0),
+    [blocks]
+  );
 
-  const Wrapper = noCard ? View : Card;
-  const wrapperProps = noCard ? { style: styles.flat } : { style: styles.card };
+  const summary = useMemo(() => {
+    const totalSets = safeBlocks.reduce((acc, b) => acc + (b.sets?.length || 0), 0);
+    const totalVolume = safeBlocks.reduce(
+      (acc, b) =>
+        acc +
+        (b.sets || []).reduce((a, s) => a + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0),
+      0
+    );
+    return { totalSets, totalVolume };
+  }, [safeBlocks]);
+
+  const content = (
+    <View>
+      {/* Title + summary in one line (if provided) */}
+      {(title || true) && (
+        <Text style={{ color: palette.text, fontSize: 16, fontWeight: '900', marginBottom: spacing(0.5) }}>
+          {title || 'Workout'}
+          <Text style={{ color: palette.text, fontWeight: '900' }}>
+            {`  •  ${summary.totalSets} sets  •  ${Math.round(summary.totalVolume).toLocaleString()} ${units}`}
+          </Text>
+        </Text>
+      )}
+
+      {safeBlocks.map((b, idx) => {
+        const ex = b.exercise; // ← centralized; never use a free variable named `ex` elsewhere
+        const head = `${ex.name}${ex.muscleGroup ? ` • ${ex.muscleGroup}` : ''}`;
+        return (
+          <View
+            key={b.id}
+            style={{
+              paddingVertical: compact ? 6 : 8,
+              borderBottomWidth: 1,
+              borderBottomColor: 'rgba(0,0,0,0.06)',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: compact ? 4 : 6 }}>
+              {!!ex.icon && <Text style={{ fontSize: 16, marginRight: 8 }}>{ex.icon}</Text>}
+              <Text style={{ color: palette.text, fontWeight: '800' }}>{head}</Text>
+            </View>
+
+            {/* Sets line like: 3×(155×10 lb) */}
+            <Text style={{ color: palette.sub }}>
+              {formatSets(b.sets, units)}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+
+  if (showCard === false) return content;
 
   return (
-    <Pressable onPress={onPress} disabled={!onPress}>
-      <Wrapper {...wrapperProps}>
-        <View style={{ gap: 10 }}>
-          {blocks.map((block) => {
-            const ex = block?.exercise || {};
-            const name = ex.name || 'Exercise';
-            const icon = ex.icon || '🏋️';
-
-            const sets = Array.isArray(block?.sets) ? block.sets : [];
-            return (
-              <View key={block.id || name} style={styles.exerciseRow}>
-                <Text style={styles.exerciseIcon}>{icon}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.exerciseName}>{name}</Text>
-                  <View style={styles.setsRow}>
-                    {sets.map((s, i) => {
-                      const w = Number(s?.weight) || 0;
-                      const r = Number(s?.reps) || 0;
-                      return (
-                        <Text key={s?.id || i} style={styles.setChip}>
-                          {r} x {w}{units}
-                        </Text>
-                      );
-                    })}
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </Wrapper>
-    </Pressable>
+    <Card style={{ padding: spacing(2) }}>
+      {content}
+    </Card>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    padding: spacing(1.5),
-  },
-  flat: {
-    paddingVertical: spacing(1),
-  },
-  exerciseRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  exerciseIcon: {
-    fontSize: 18,
-    marginTop: 3,
-  },
-  exerciseName: {
-    color: palette.text,
-    fontWeight: '700',
-    fontSize: 15,
-    marginBottom: 4,
-  },
-  setsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  setChip: {
-    color: palette.sub,
-    fontSize: 12,
-  },
-});
+function formatSets(sets, units) {
+  if (!sets || sets.length === 0) return 'No sets';
+  // group by (weight,reps)
+  const key = (s) => `${Number(s.weight) || 0}x${Number(s.reps) || 0}`;
+  const map = new Map();
+  for (const s of sets) {
+    const k = key(s);
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+  // pretty print e.g., "3×(155×10 lb) + 2×(135×12 lb)"
+  const parts = [];
+  for (const [k, count] of map.entries()) {
+    const [w, r] = k.split('x');
+    parts.push(`${count}×(${Number(w)}×${Number(r)} ${units})`);
+  }
+  return parts.join(' + ');
+}
+

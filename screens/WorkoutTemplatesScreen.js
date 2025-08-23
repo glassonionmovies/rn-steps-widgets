@@ -1,70 +1,75 @@
 // screens/WorkoutTemplatesScreen.js
-import React, { useEffect, useState } from 'react';
-import { ScrollView, View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { ScrollView, View, Text, Pressable, Alert, StyleSheet, Modal, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
 import Card from '../components/ui/Card';
 import WorkoutSessionPreviewCard from '../components/workout/WorkoutSessionPreviewCard';
+
 import { palette, spacing, layout } from '../theme';
-import { getAllWorkoutTemplates } from '../store/templateStore';
+import {
+  getAllWorkoutTemplates,
+  deleteWorkoutTemplate,
+  renameWorkoutTemplate,
+} from '../store/templateStore';
 
 export default function WorkoutTemplatesScreen() {
   const navigation = useNavigation();
   const [templates, setTemplates] = useState([]);
 
-  // Load & sort by createdAt DESC (newest first)
-  const load = async () => {
-    const raw = await getAllWorkoutTemplates();
-    const sorted = (raw || []).slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  // Rename modal
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const [renamingId, setRenamingId] = useState(null);
+
+  const load = useCallback(async () => {
+    const all = await getAllWorkoutTemplates();
+    const sorted = [...(all || [])].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
     setTemplates(sorted);
-  };
+  }, []);
 
   useEffect(() => {
     const unsub = navigation.addListener('focus', load);
     load();
     return unsub;
-  }, [navigation]);
+  }, [navigation, load]);
 
   const startFromTemplate = (t) => {
     navigation.navigate('TrackWorkout', { template: t });
   };
 
-  // Local summary for templates
-  function summarizeTemplate(t) {
-    const units = t?.units || 'lb';
-    let totalSets = 0;
-    let totalVolume = 0;
-    for (const b of t?.blocks || []) {
-      for (const s of b?.sets || []) {
-        const w = Number(s?.weight) || 0;
-        const r = Number(s?.reps) || 0;
-        totalSets += 1;
-        totalVolume += w * r;
-      }
-    }
-    return { totalSets, totalVolume, units };
-  }
+  const remove = async (t) => {
+    Alert.alert('Delete template?', `“${t.name}”`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await deleteWorkoutTemplate(t.id);
+          load();
+        },
+      },
+    ]);
+  };
 
-  // Decorate blocks for preview
-  function asPreviewWorkoutFromTemplate(t) {
-    const fakeDone = Date.now();
-    return {
-      id: t.id,
-      title: t.name || 'Template',
-      units: t.units || 'lb',
-      blocks: (t.blocks || []).map((b, i) => ({
-        id: b.id || `b_${i}`,
-        exercise: b.exercise,
-        sets: (b.sets || []).map((s, j) => ({
-          id: s.id || `s_${i}_${j}`,
-          weight: Number(s.weight) || 0,
-          reps: Number(s.reps) || 0,
-          completedAt: fakeDone,
-          __preview: true,
-        })),
-      })),
-    };
-  }
+  const openRename = (t) => {
+    setRenamingId(t.id);
+    setRenameValue(t.name);
+    setRenameOpen(true);
+  };
+
+  const confirmRename = async () => {
+    const name = renameValue.trim();
+    if (!name) {
+      setRenameOpen(false);
+      return;
+    }
+    await renameWorkoutTemplate(renamingId, name);
+    setRenameOpen(false);
+    setRenamingId(null);
+    setRenameValue('');
+    load();
+  };
 
   return (
     <ScrollView
@@ -76,52 +81,93 @@ export default function WorkoutTemplatesScreen() {
         gap: spacing(2),
       }}
     >
-      {/* Screen heading */}
-      <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
-        Workout Template
-      </Text>
-
-      {templates.length === 0 ? (
-        <Text style={{ color: palette.sub }}>
-          No templates yet. Save your current workout as a template from the Track screen.
+      <Card style={{ padding: spacing(2) }}>
+        <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
+          Workout Templates
         </Text>
-      ) : (
-        <View style={{ gap: spacing(2) }}>
-          {templates.map((t) => {
-            const preview = asPreviewWorkoutFromTemplate(t);
-            const { totalSets, totalVolume, units } = summarizeTemplate(t);
-            const when = t.createdAt
-              ? new Date(t.createdAt).toLocaleDateString(undefined, {
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric',
-                })
-              : '';
+        <View style={{ height: spacing(1) }} />
 
-            return (
-              <Card key={t.id} style={{ padding: spacing(2) }}>
-                {/* Name (left) + Summary (middle) + Date (right) */}
-                <View style={styles.headerRow}>
-                  <Pressable style={{ flex: 1 }} onPress={() => startFromTemplate(t)}>
-                    <Text style={styles.name}>{t.name}</Text>
+        {templates.length === 0 ? (
+          <Text style={{ color: palette.sub }}>
+            No templates yet. Save your current workout as a template from the Track screen.
+          </Text>
+        ) : (
+          <View style={{ gap: spacing(2) }}>
+            {templates.map((t) => {
+              const created =
+                t?.createdAt
+                  ? new Date(t.createdAt).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })
+                  : '';
+
+              return (
+                <Card key={t.id} style={{ padding: spacing(2) }}>
+                  {/* Header row: name (left), date (right) */}
+                  <View style={styles.headerRow}>
+                    <Text style={styles.tplName} numberOfLines={1}>
+                      {t.name || 'Template'}
+                    </Text>
+                    {!!created && <Text style={styles.tplDate}>{created}</Text>}
+                  </View>
+
+                  {/* Preview (do NOT filter completed; templates are blueprints) */}
+                  <Pressable onPress={() => startFromTemplate(t)} style={{ marginTop: spacing(1) }}>
+                    <WorkoutSessionPreviewCard
+                      title={undefined}             // title already shown in header row
+                      units={t.units || 'lb'}
+                      blocks={t.blocks || []}
+                      showOnlyCompleted={false}     // ← important: show all sets from template
+                    />
                   </Pressable>
-                  <Text style={styles.summary}>
-                    {totalSets} sets • {Math.round(totalVolume).toLocaleString()} {units}
-                  </Text>
-                  <Text style={styles.date}>{when}</Text>
-                </View>
 
-                {/* Exercise preview */}
-                <WorkoutSessionPreviewCard
-                  workout={preview}
-                  onPress={() => startFromTemplate(t)}
-                  noCard
-                />
-              </Card>
-            );
-          })}
+                  {/* Actions */}
+                  <View style={styles.actionsRow}>
+                    <Pressable onPress={() => openRename(t)} hitSlop={8}>
+                      <Text style={styles.link}>Rename</Text>
+                    </Pressable>
+                    <Pressable onPress={() => remove(t)} hitSlop={8}>
+                      <Text style={styles.delete}>Delete</Text>
+                    </Pressable>
+                  </View>
+                </Card>
+              );
+            })}
+          </View>
+        )}
+      </Card>
+
+      {/* Rename Modal */}
+      <Modal
+        visible={renameOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRenameOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rename Template</Text>
+            <TextInput
+              value={renameValue}
+              onChangeText={setRenameValue}
+              placeholder="Template name"
+              placeholderTextColor="#9CA3AF"
+              style={styles.input}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
+              <Pressable onPress={() => setRenameOpen(false)}>
+                <Text style={styles.modalBtn}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={confirmRename}>
+                <Text style={[styles.modalBtn, { fontWeight: '800' }]}>Save</Text>
+              </Pressable>
+            </View>
+          </View>
         </View>
-      )}
+      </Modal>
     </ScrollView>
   );
 }
@@ -129,25 +175,43 @@ export default function WorkoutTemplatesScreen() {
 const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    marginBottom: spacing(1),
-    gap: spacing(1),
+    gap: 8,
   },
-  name: {
+  tplName: { color: palette.text, fontWeight: '900', fontSize: 16, flexShrink: 1 },
+  tplDate: { color: palette.sub, fontWeight: '800', fontSize: 12, marginLeft: 8 },
+
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 14,
+    marginTop: spacing(1),
+  },
+  link: { color: '#2563EB', fontWeight: '800' },
+  delete: { color: '#EF4444', fontWeight: '800' },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    padding: 16,
+  },
+  modalTitle: { color: palette.text, fontSize: 18, fontWeight: '900', marginBottom: 8 },
+  input: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     color: palette.text,
-    fontWeight: '900',
-    fontSize: 16,
-    flexShrink: 1,
-  },
-  summary: {
-    color: palette.text,
-    fontWeight: '800',
-    fontSize: 12,
-  },
-  date: {
-    color: palette.sub,
-    fontSize: 12,
   },
 });

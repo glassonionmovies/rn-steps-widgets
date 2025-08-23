@@ -1,77 +1,86 @@
 // screens/PlanningScreen.js
-import React, { useMemo, useState } from 'react';
-import { View, Text } from 'react-native';
+// Focused Planning screen: ONLY "Rep.AI Recommended".
+// No pre-generation here; we just navigate to the Preview screen in the Train stack.
+
+import React, { useState } from 'react';
+import { ScrollView, View, Text, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
 import Card from '../components/ui/Card';
-import GradientButton from '../components/ui/GradientButton';
-import { palette, spacing } from '../theme';
-
-import { generatePlan } from '../utils/repAIPlanner';
-import { getAllWorkouts } from '../store/workoutStore';
+import { palette, spacing, layout } from '../theme';
 
 export default function PlanningScreen() {
   const navigation = useNavigation();
   const [busy, setBusy] = useState(false);
-  const [emptyHint, setEmptyHint] = useState(false);
 
-  async function onRecommendPress() {
+  const goAIRecommended = () => {
+    if (busy) return;
+    setBusy(true);
     try {
-      setBusy(true);
-
-      const history = await getAllWorkouts();
-      setEmptyHint(!history || history.length === 0);
-
-      const vitals = {}; // plug in if available
-      const plan = generatePlan({
-        history,
-        goals: 'hypertrophy',           // or from user setting
-        split: 'upper',                 // or current selection
-        timeBudgetMin: 50,
-        equipment: ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight'],
-        vitals,
-        settings: {
-          units: history?.[0]?.units || 'lb',
-          plateIncrementLb: 5,
-          plateIncrementKg: 2.5,
-        },
-        seed: Date.now(),
-      });
-
+      // Navigate to the PreviewRecommended screen in the Train stack.
+      // The preview screen will handle LLM generation.
       navigation.navigate('Train', {
         screen: 'PreviewRecommended',
-        params: { plan, source: 'planning' },
+        params: { source: 'planning' },
       });
     } finally {
+      // immediate reset so the button doesn't stay disabled if user returns
       setBusy(false);
     }
-  }
-
-  const subText = useMemo(() => {
-    if (emptyHint) {
-      return 'Tip: Load test data from Setup for a richer plan preview.';
-    }
-    return 'Create and manage templates — or let Rep.AI plan your next session.';
-  }, [emptyHint]);
+  };
 
   return (
-    <View style={{ flex: 1, padding: spacing(2) }}>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: palette.bg }}
+      contentContainerStyle={{
+        paddingHorizontal: layout.screenHMargin,
+        paddingTop: spacing(2),
+        paddingBottom: spacing(4),
+        gap: spacing(2),
+      }}
+    >
       <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 20, fontWeight: '900' }}>
-          Planning
+        <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
+          Plan Your Training
         </Text>
-        <Text style={{ color: palette.sub, marginTop: 6 }}>
-          {subText}
+        <Text style={{ color: palette.sub, marginTop: 4 }}>
+          Use Rep.AI to create today’s workout (goals coming soon)
         </Text>
 
-        <View style={{ height: spacing(1) }} />
+        <View style={{ height: spacing(1.5) }} />
 
-        <GradientButton
-          title={busy ? 'Planning…' : 'Rep.AI Recommended'}
-          onPress={onRecommendPress}
+        {/* Only action: Rep.AI Recommended */}
+        <Pressable
+          onPress={goAIRecommended}
+          style={[rowStyle, busy && { opacity: 0.6 }]}
           disabled={busy}
-        />
+        >
+          <View style={iconTextRow}>
+            <Text style={{ fontSize: 18 }}>🤖</Text>
+            <View>
+              <Text style={titleStyle}>Rep.AI Recommended</Text>
+              <Text style={subtitleStyle}>
+                {busy ? 'Opening…' : 'Smart plan for today'}
+              </Text>
+            </View>
+          </View>
+          <Text style={chevronStyle}>{busy ? '…' : '›'}</Text>
+        </Pressable>
       </Card>
-    </View>
+    </ScrollView>
   );
 }
+
+// Styles aligned with Train screen’s row look
+const rowStyle = {
+  paddingVertical: 14,
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(0,0,0,0.06)',
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+};
+const iconTextRow = { flexDirection: 'row', alignItems: 'center', gap: 10 };
+const titleStyle = { color: palette.text, fontWeight: '800' };
+const subtitleStyle = { color: palette.sub, fontSize: 12 };
+const chevronStyle = { color: palette.sub, fontSize: 18 };

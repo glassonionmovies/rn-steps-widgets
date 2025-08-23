@@ -1,13 +1,13 @@
 // screens/TrainStarterScreen.js
 import React, { useState } from 'react';
-import { ScrollView, View, Text, Pressable, Alert } from 'react-native';
+import { ScrollView, View, Text, Pressable } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
 import Card from '../components/ui/Card';
 import { palette, spacing, layout } from '../theme';
 
-import { getAllWorkouts } from '../store/workoutStore';
-import { generatePlan } from '../utils/repAIPlanner';
+// NOTE: Removed imports of getAllWorkouts and generatePlan from ../utils/repAIPlanner
+// The PreviewRecommended screen will now handle Rep.AI generation (and show debug payload).
 
 export default function TrainStarterScreen() {
   const navigation = useNavigation();
@@ -38,37 +38,12 @@ export default function TrainStarterScreen() {
     navigation.navigate('TrackWorkout', { isBlank: true });
   };
 
-  // 4) Rep.AI Recommended → generate plan like Planning screen, then preview
-  const goAIRecommended = async () => {
+  // 4) Rep.AI Recommended → navigate to preview; generation + debug happen there
+  const goAIRecommended = () => {
     if (busyAI) return;
-    try {
-      setBusyAI(true);
-
-      const history = await getAllWorkouts();
-      const vitals = {}; // plug in readiness/soreness if available
-
-      const plan = generatePlan({
-        history,
-        goals: 'hypertrophy',          // or pull from user setting
-        split: 'upper',                // or current selection
-        timeBudgetMin: 50,
-        equipment: ['barbell', 'dumbbell', 'machine', 'cable', 'bodyweight'],
-        vitals,
-        settings: {
-          units: history?.[0]?.units || 'lb',
-          plateIncrementLb: 5,
-          plateIncrementKg: 2.5,
-        },
-        seed: Date.now(),
-      });
-
-      // We are inside Train stack already → direct navigate
-      navigation.navigate('PreviewRecommended', { plan, source: 'train_starter' });
-    } catch (e) {
-      Alert.alert('Rep.AI failed', String(e?.message || e));
-    } finally {
-      setBusyAI(false);
-    }
+    // No local generation here. PreviewRecommended will build history-aware payload
+    // and call the LLM (and show the exact payload at the bottom for debugging).
+    navigation.navigate('PreviewRecommended', { source: 'train_starter' });
   };
 
   return (
@@ -127,7 +102,7 @@ export default function TrainStarterScreen() {
           <Text style={chevronStyle}>{'›'}</Text>
         </Pressable>
 
-        {/* 4) Rep.AI Recommended (same logic as Planning) */}
+        {/* 4) Rep.AI Recommended (generation handled in PreviewRecommended) */}
         <Pressable
           onPress={goAIRecommended}
           style={[rowStyle, busyAI && { opacity: 0.6 }]}

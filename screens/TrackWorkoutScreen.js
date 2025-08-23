@@ -415,28 +415,37 @@ export default function TrackWorkoutScreen() {
   const [tplOpen, setTplOpen] = useState(false);
   const [tplName, setTplName] = useState('');
 
+  // UPDATED: Always save the entire workout as a template (ignore completion status).
   async function confirmSaveTemplate() {
-    const cleanedBlocks = (blocks || [])
-      .map(({ exercise, sets }) => ({
-        exercise,
-        sets: (sets || [])
-          .filter((s) => !isEmptySet(s) && isSetCompleted(s))
-          .map((s) => ({
-            weight: Number(s.weight) || 0,
-            reps: Number(s.reps) || 0,
-          })),
-      }))
-      .filter((b) => (b.sets || []).length > 0);
+    try {
+      const cleanedBlocks = (blocks || [])
+        .map(({ exercise, sets }) => ({
+          exercise,
+          // include ALL visible, non-empty sets regardless of completion check
+          sets: (sets || [])
+            .filter((s) => !isEmptySet(s))
+            .map((s) => ({
+              weight: Number(s.weight) || 0,
+              reps: Number(s.reps) || 0,
+            })),
+        }))
+        // keep exercises that have at least one non-empty set
+        .filter((b) => (b.sets || []).length > 0);
 
-    if (!cleanedBlocks.length) {
-      Alert.alert('No data', 'Complete at least one set (check) to save a template.');
-      return;
+      if (!cleanedBlocks.length) {
+        Alert.alert('Nothing to save', 'There are no sets with weight/reps to save as a template.');
+        return;
+      }
+
+      const name = (tplName || title || '').trim() || `Template ${new Date().toLocaleDateString()}`;
+      await saveWorkoutTemplate(name, { units, blocks: cleanedBlocks });
+
+      setTplOpen(false);
+      setTplName('');
+      Alert.alert('Saved', `Template “${name}” saved.`);
+    } catch (e) {
+      Alert.alert('Save failed', String(e?.message || e));
     }
-    const name = tplName.trim() || `Template ${new Date().toLocaleDateString()}`;
-    await saveWorkoutTemplate(name, { units, blocks: cleanedBlocks });
-    setTplOpen(false);
-    setTplName('');
-    Alert.alert('Saved', `Template “${name}” saved.`);
   }
 
   // Cancel workout: confirm, then discard and go to Wellness tab

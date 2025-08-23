@@ -1,162 +1,182 @@
 // screens/PreviewRecommendedScreen.js
-import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
+// Restores your previously-working UI/flow and routes all LLM calls through llmCompat,
+// which handles any missing/renamed exports across builds.
+
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { ScrollView, View, Text, Pressable, TextInput, StyleSheet, Platform } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import Card from '../components/ui/Card';
 import GradientButton from '../components/ui/GradientButton';
 import WorkoutSessionPreviewCard from '../components/workout/WorkoutSessionPreviewCard';
+
 import { palette, spacing, layout } from '../theme';
-
 import { getAllWorkouts } from '../store/workoutStore';
-import { generatePlan } from '../utils/repAIPlanner';
 
-const INTENSITY_PRESETS = { low: 0.45, medium: 0.7, high: 0.95 };
-const GOAL_OPTIONS = ['hypertrophy', 'strength', 'endurance'];
-const EQUIP_OPTIONS = [
-  { key: 'barbell',    label: 'Barbell',    icon: '🏋️' },
-  { key: 'dumbbell',   label: 'Dumbbell',   icon: '🏋️‍♀️' },
-  { key: 'machine',    label: 'Machine',    icon: '🛠️' },
-  { key: 'cable',      label: 'Cable',      icon: '🧵' },
-  { key: 'bodyweight', label: 'Bodyweight', icon: '🤸' },
-];
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+import { loadOpenAISettings, buildHistorySummary, recommendPlan } from '../services/llmCompat';
+import { normalizePlan } from '../utils/planNormalize';
+
+const LLM_CACHE_KEY = 'repai:last_llm_plan_v1';
+
+// UI helpers (same as your working version)
+function cap(s) {
+  if (!s) return '';
+  const str = String(s);
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+function platformMono() {
+  if (Platform.OS === 'ios') return 'Menlo';
+  if (Platform.OS === 'android') return 'monospace';
+  return 'monospace';
+}
+function Mono({ children }) {
+  return <Text style={{ color: palette.text, fontFamily: platformMono(), fontSize: 12, lineHeight: 18 }}>{children}</Text>;
+}
+function Chip({ label, selected, onPress, emoji }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={8}
+      style={[styles.chip, selected ? styles.chipOn : styles.chipOff]}>
+      {emoji ? <Text style={{ marginRight: 6 }}>{emoji}</Text> : null}
+      <Text style={[styles.chipText, selected ? styles.chipTextOn : styles.chipTextOff]}>{label}</Text>
+    </Pressable>
+  );
+}
 
 export default function PreviewRecommendedScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const incomingPlan = route?.params?.plan || null;
-
-  const [history, setHistory] = useState([]);
-  const [plan, setPlan] = useState(incomingPlan);
 
   // Customize controls
   const [minutes, setMinutes] = useState(50);
-  const [intensity, setIntensity] = useState('medium'); // 'low' | 'medium' | 'high'
+  const [intensity, setIntensity] = useState('medium');
+  const [goal, setGoal] = useState('hypertrophy');
+  const [equip, setEquip] = useState(['barbell','dumbbell','machine','cable','bodyweight']);
   const [notes, setNotes] = useState('');
-  const [goal, setGoal] = useState('hypertrophy');      // from GOAL_OPTIONS
-  const [equip, setEquip] = useState(new Set(EQUIP_OPTIONS.map(e => e.key))); // multi-select
 
-  // Pull history once
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const all = await getAllWorkouts();
-      if (!mounted) return;
-      setHistory(all || []);
+  // State
+  const [loading, setLoading] = useState(false);
+  const [plan, setPlan] = useState(null);
+  const [error, setError] = useState(null);
+  const [lastGeneratedAt, setLastGeneratedAt] = useState(null);
 
-      if (!incomingPlan) {
-        const auto = buildPlan(all, { minutes, intensity, notes, goal, equip });
-        setPlan(auto);
-      }
-    })();
-    return () => { mounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function buildPlan(hist, opts) {
-    const { minutes: m, intensity: int, goal: g, equip: eqSet } = opts;
-    const readiness = INTENSITY_PRESETS[int] ?? INTENSITY_PRESETS.medium;
-    const units = hist?.[0]?.units || 'lb';
-    const equipment = Array.from(eqSet || []).filter(Boolean);
-    const safeEquipment = equipment.length ? equipment : EQUIP_OPTIONS.map(e => e.key);
-
-    return generatePlan({
-      history: hist || [],
-      goals: g || 'hypertrophy',
-      split: 'upper', // (could be added as another selector later)
-      timeBudgetMin: clampInt(m, 15, 120),
-      equipment: safeEquipment,
-      vitals: { readiness },
-      settings: { units, plateIncrementLb: 5, plateIncrementKg: 2.5 },
-      constraints: {},
-      seed: Date.now(),
-    });
-  }
-
-  function onGenerate() {
-    const fresh = buildPlan(history, { minutes, intensity, notes, goal, equip });
-    setPlan(fresh);
-  }
-
-  // Summary (sets & volume)
-  const summary = useMemo(() => {
-    const units = plan?.units || 'lb';
-    let totalSets = 0, totalVolume = 0;
-    for (const b of plan?.blocks || []) {
-      for (const s of b?.sets || []) {
-        const w = Number(s?.weight) || 0;
-        const r = Number(s?.reps) || 0;
-        totalSets += 1;
-        totalVolume += w * r;
-      }
-    }
-    return { totalSets, totalVolume: Math.round(totalVolume), units };
-  }, [plan]);
-
-  const when = useMemo(() => {
-    const ts = plan?.createdAt || Date.now();
-    return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-  }, [plan]);
-
-  // Preview object (flat, no completion flags)
-  const previewWorkout = useMemo(() => {
-    if (!plan) return null;
+  const vitalsFromRoute = useMemo(() => {
+    const r = route?.params || {};
     return {
-      id: plan.id,
-      title: plan.name || 'Rep.AI Plan',
-      units: plan.units || 'lb',
-      blocks: (plan.blocks || []).map((b, i) => ({
-        id: b.id || `b_${i}`,
-        exercise: b.exercise,
-        sets: (b.sets || []).map((s, j) => ({
-          id: s.id || `s_${i}_${j}`,
-          weight: Number(s.weight) || 0,
-          reps: Number(s.reps) || 0,
-        })),
-      })),
+      readiness: r?.readiness?.score ?? r?.readiness,
+      energy: r?.readiness?.energy,
+      sleepQuality: r?.readiness?.sleep,
+      sorenessByGroup: r?.readiness?.sorenessByGroup,
+      steps: r?.steps,
+      sleep: r?.sleep,
     };
-  }, [plan]);
+  }, [route?.params]);
 
-  const startFromPlan = () => {
-    if (!plan) return;
-    const template = {
-      name: plan.name || 'Rep.AI Plan',
-      units: plan.units || 'lb',
-      blocks: (plan.blocks || []).map(b => ({
-        exercise: b.exercise,
-        sets: (b.sets || []).map(s => ({ weight: Number(s.weight) || 0, reps: Number(s.reps) || 0 })),
-      })),
-    };
-    navigation.navigate('Train', { screen: 'TrackWorkout', params: { template } });
+  const toggleEquip = (key) => {
+    setEquip((prev) => {
+      const s = new Set(prev);
+      if (s.has(key)) s.delete(key); else s.add(key);
+      return Array.from(s);
+    });
   };
 
-  const justification = useMemo(() => {
-    if (!plan) return '';
-    const groups = Array.from(new Set((plan.blocks || []).map(b => b.exercise?.muscleGroup).filter(Boolean)));
-    const patterns = Array.from(new Set((plan.blocks || []).map(b => b.exercise?.pattern).filter(Boolean)));
-    const readyPct = Math.round((INTENSITY_PRESETS[intensity] ?? 0.7) * 100);
-    const equipList = EQUIP_OPTIONS.filter(e => equip.has(e.key)).map(e => e.label).join(', ');
+  const loadCachedPlan = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(LLM_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.plan) {
+        setPlan(parsed.plan);
+        setLastGeneratedAt(parsed.generatedAt || null);
+      }
+    } catch {
+      // ignore cache errors
+    }
+  }, []);
 
-    const lines = [];
-    lines.push(`• Goal: ${cap(goal)}  • Split: Upper`);
-    lines.push(`• Intensity: ${cap(intensity)} (~${readyPct}% readiness)  • Time: ~${minutes} min`);
-    lines.push(`• Equipment allowed: ${equipList || '—'}`);
-    if (groups.length) lines.push(`• Target groups today: ${groups.join(' / ')}`);
-    if (patterns.length) lines.push(`• Pattern coverage: ${patterns.map(humanizePattern).join(', ')}`);
-    lines.push(`• Dose: ${summary.totalSets} sets, est. volume ${summary.totalVolume.toLocaleString()} ${summary.units}`);
-    if (notes.trim()) lines.push(`• Your notes: “${notes.trim()}”`);
-    return lines.join('\n');
-  }, [plan, intensity, minutes, notes, goal, equip, summary]);
+  const saveCachedPlan = useCallback(async (p) => {
+    try {
+      const payload = { generatedAt: Date.now(), plan: p };
+      await AsyncStorage.setItem(LLM_CACHE_KEY, JSON.stringify(payload));
+      setLastGeneratedAt(payload.generatedAt);
+    } catch {
+      // ignore cache errors
+    }
+  }, []);
 
-  function toggleEquip(name) {
-    setEquip(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      if (next.size === 0) return new Set([name]); // keep at least one
-      return next;
+  const generate = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { apiKey, model, endpoint } = await loadOpenAISettings();
+      if (!apiKey) {
+        throw new Error('Missing OpenAI API key (check Setup screen or app config).');
+      }
+
+      const history = await getAllWorkouts();
+      const units = (history?.[0]?.units === 'kg') ? 'kg' : 'lb';
+      const historySummary = buildHistorySummary(history);
+
+      const prefs = {
+        goal,
+        split: 'upper',                 // can be wired to UI later
+        timeBudgetMin: minutes,
+        equipment: [...equip],
+        units,
+        intensity,
+        comment: notes,
+        constraints: {},
+      };
+
+      const out = await recommendPlan({
+        prefs,
+        vitals: vitalsFromRoute || {},
+        historySummary,
+        apiKey,
+        model,
+        endpoint,
+      });
+
+      const llmPlan = out?.plan || out;
+      const normalized = normalizePlan(llmPlan);
+      if (!normalized) throw new Error('Plan could not be generated.');
+
+      setPlan(normalized);
+      await saveCachedPlan(normalized);
+    } catch (e) {
+      console.error('Plan generation failed:', e);
+      setError(e?.message || 'Failed to generate plan.');
+    } finally {
+      setLoading(false);
+    }
+  }, [minutes, goal, equip, intensity, notes, vitalsFromRoute, saveCachedPlan]);
+
+  // Load cached plan on mount; DO NOT auto-generate
+  useEffect(() => {
+    loadCachedPlan();
+  }, [loadCachedPlan]);
+
+  const startThisPlan = () => {
+    if (!plan) return;
+    navigation.navigate('Train', {
+      screen: 'TrackWorkout',
+      params: {
+        template: {
+          name: plan.name,
+          units: plan.units,
+          blocks: (plan.blocks || []).map((b) => ({
+            exercise: b.exercise,
+            sets: (b.sets || []).map((s) => ({ weight: s.weight, reps: s.reps })),
+          })),
+        },
+      },
     });
-  }
+  };
+
+  const lastGenLabel = lastGeneratedAt
+    ? `Last generated ${new Date(lastGeneratedAt).toLocaleString()}`
+    : null;
 
   return (
     <ScrollView
@@ -165,288 +185,127 @@ export default function PreviewRecommendedScreen() {
         paddingHorizontal: layout.screenHMargin,
         paddingTop: spacing(2),
         paddingBottom: spacing(4),
-        gap: spacing(2),
+        rowGap: spacing(2),
       }}
     >
-      {/* 1) Customize */}
+      {/* Customize */}
       <Card style={{ padding: spacing(2) }}>
-        <Text style={styles.sectionTitle}>Customize</Text>
-
-        {/* Time */}
+        <Text style={styles.h1}>Customize</Text>
         <View style={styles.row}>
-          <View style={styles.rowLeft}>
-            <Text style={styles.rowIcon}>🕒</Text>
-            <Text style={styles.label}>Available time</Text>
-          </View>
-          <View style={styles.timeRow}>
-            <RoundPill label="−5" onPress={() => setMinutes(m => Math.max(15, m - 5))} />
-            <TextInput
-              value={String(minutes)}
-              onChangeText={(t) => {
-                const n = parseInt(t.replace(/[^\d]/g, ''), 10);
-                if (Number.isFinite(n)) setMinutes(clampInt(n, 15, 180));
-                else if (t === '') setMinutes(0);
-              }}
-              placeholder="min"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="number-pad"
-              style={styles.minutesInput}
-            />
-            <Text style={{ color: palette.sub, marginLeft: 4 }}>min</Text>
-            <RoundPill label="+5" onPress={() => setMinutes(m => Math.min(180, m + 5))} style={{ marginLeft: 8 }} />
-          </View>
-        </View>
-
-        {/* Intensity */}
-        <View style={styles.row}>
-          <View style={styles.rowLeft}>
-            <Text style={styles.rowIcon}>⚡</Text>
-            <Text style={styles.label}>Intensity</Text>
-          </View>
-          <View style={styles.segment}>
-            {(['low','medium','high']).map((lvl) => (
-              <Pressable
-                key={lvl}
-                onPress={() => setIntensity(lvl)}
-                style={[styles.segmentBtn, intensity === lvl && styles.segmentBtnActive]}
-                hitSlop={6}
-              >
-                <Text style={[styles.segmentText, intensity === lvl && styles.segmentTextActive]}>
-                  {lvl === 'low' ? '🧘' : lvl === 'high' ? '🔥' : '⚡'} {cap(lvl)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* Goal */}
-        <View style={styles.row}>
-          <View style={styles.rowLeft}>
-            <Text style={styles.rowIcon}>🎯</Text>
-            <Text style={styles.label}>Goal</Text>
-          </View>
-          <View style={styles.segment}>
-            {GOAL_OPTIONS.map((g) => (
-              <Pressable
-                key={g}
-                onPress={() => setGoal(g)}
-                style={[styles.segmentBtn, goal === g && styles.segmentBtnActive]}
-                hitSlop={6}
-              >
-                <Text style={[styles.segmentText, goal === g && styles.segmentTextActive]}>
-                  {cap(g)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        {/* Equipment */}
-        <View style={styles.rowCol}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.rowIcon}>🧰</Text>
-            <Text style={styles.label}>Equipment</Text>
-          </View>
-          <View style={styles.chipsWrap}>
-            {EQUIP_OPTIONS.map((e) => {
-              const active = equip.has(e.key);
-              return (
-                <Pressable
-                  key={e.key}
-                  onPress={() => toggleEquip(e.key)}
-                  style={[styles.chip, active && styles.chipActive]}
-                  hitSlop={6}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                    {e.icon} {e.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Notes */}
-        <View style={styles.rowCol}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <Text style={styles.rowIcon}>🗒️</Text>
-            <Text style={styles.label}>Notes / additions</Text>
-          </View>
+          <Text style={styles.label}>⏱ Time (min)</Text>
           <TextInput
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="e.g., avoid heavy hinge; add curls; quads sore"
-            placeholderTextColor="#9CA3AF"
-            multiline
-            style={styles.notesInput}
+            value={String(minutes)}
+            onChangeText={(t) => setMinutes(Number(t) || 0)}
+            keyboardType="numeric"
+            style={styles.input}
           />
         </View>
-
-        <View style={{ height: spacing(1) }} />
-        <GradientButton title="Generate" onPress={onGenerate} />
+        <View style={styles.row}>
+          <Text style={styles.label}>🔥 Intensity</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {['low','medium','high'].map((lvl) => (
+              <Chip key={lvl} label={cap(lvl)} emoji={lvl==='low'?'🟢':lvl==='medium'?'🟡':'🔴'} selected={intensity===lvl} onPress={() => setIntensity(lvl)} />
+            ))}
+          </View>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>🎯 Goal</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {['hypertrophy','strength','endurance'].map((g) => (
+              <Chip key={g} label={cap(g)} selected={goal===g} onPress={() => setGoal(g)} />
+            ))}
+          </View>
+        </View>
+        <View style={styles.row}>
+          <Text style={styles.label}>🏋 Equipment</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {['barbell','dumbbell','machine','cable','bodyweight'].map((e) => (
+              <Chip key={e} label={cap(e)} selected={equip.includes(e)} onPress={() => {
+                setEquip(prev => {
+                  const s = new Set(prev);
+                  if (s.has(e)) s.delete(e); else s.add(e);
+                  return Array.from(s);
+                });
+              }} />
+            ))}
+          </View>
+        </View>
+        <TextInput
+          placeholder="Any notes or preferences?"
+          placeholderTextColor="#9CA3AF"
+          style={[styles.input, { marginTop: spacing(1), height: 60 }]}
+          multiline
+          value={notes}
+          onChangeText={setNotes}
+        />
+        <View style={{ marginTop: spacing(1) }}>
+          <GradientButton title={loading ? 'Generating…' : 'Generate'} onPress={generate} disabled={loading} />
+          {!!lastGenLabel && (
+            <Text style={{ color: palette.sub, fontSize: 12, marginTop: 6, textAlign: 'center' }}>
+              {lastGenLabel}
+            </Text>
+          )}
+        </View>
       </Card>
 
-      {/* 2) Plan */}
-      {!plan || !previewWorkout ? (
-        <Card style={{ padding: spacing(2) }}>
-          <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-            Building your Rep.AI plan…
-          </Text>
-          <Text style={{ color: palette.sub, marginTop: 6 }}>
-            Using your history and preferences.
-          </Text>
-        </Card>
-      ) : (
-        <Card style={{ padding: spacing(2) }}>
-          <View style={styles.headerRow}>
-            <Text style={styles.name}>{plan.name || 'Rep.AI Plan'}</Text>
-            <Text style={styles.headerSummary}>
-              {summary.totalSets} {summary.totalSets === 1 ? 'set' : 'sets'} • {summary.totalVolume.toLocaleString()} {summary.units}
-            </Text>
-            <Text style={styles.date}>{when}</Text>
-          </View>
-
-          <WorkoutSessionPreviewCard
-            workout={previewWorkout}
-            onPress={startFromPlan}
-            noCard
-          />
-
-          <View style={{ height: spacing(1) }} />
-          <GradientButton title="Start this workout" onPress={startFromPlan} />
+      {/* Error */}
+      {error && (
+        <Card style={{ padding: spacing(2), borderColor: '#F87171', borderWidth: 1 }}>
+          <Text style={{ color: '#B91C1C', fontWeight: '900', marginBottom: 4 }}>Error</Text>
+          <Text style={{ color: palette.text }}>{error}</Text>
         </Card>
       )}
 
-      {/* 3) Why this plan */}
+      {/* Plan */}
       {plan && (
         <Card style={{ padding: spacing(2) }}>
-          <Text style={styles.sectionTitle}>Why Rep.AI recommended this</Text>
-          <Text style={styles.justText}>{justification}</Text>
+          <WorkoutSessionPreviewCard
+            title={plan.name}
+            units={plan.units}
+            blocks={plan.blocks}
+          />
+          <View style={{ marginTop: spacing(1) }}>
+            <GradientButton title="Start This Plan" onPress={startThisPlan} />
+          </View>
+        </Card>
+      )}
+
+      {/* Justification */}
+      {plan?.meta?.justification && (
+        <Card style={{ padding: spacing(2) }}>
+          <Text style={styles.h1}>Why Rep.AI Recommended This</Text>
+          <Mono>{plan.meta.justification}</Mono>
         </Card>
       )}
     </ScrollView>
   );
 }
 
-/* ----------------- helpers & tiny UI atoms ----------------- */
-function clampInt(n, lo, hi) { const x = Number(n) || 0; return Math.max(lo, Math.min(hi, x)); }
-function cap(s){ return String(s||'').charAt(0).toUpperCase() + String(s||'').slice(1); }
-function humanizePattern(p){
-  switch(p){
-    case 'horizontal_press': return 'Horizontal Press';
-    case 'vertical_press': return 'Vertical Press';
-    case 'horizontal_pull': return 'Horizontal Pull';
-    case 'vertical_pull': return 'Vertical Pull';
-    case 'hinge': return 'Hinge';
-    case 'squat': return 'Squat';
-    default: return cap(p);
-  }
-}
-
-function RoundPill({ label, onPress, style }) {
-  return (
-    <Pressable onPress={onPress} hitSlop={6} style={[styles.pillBtn, style]}>
-      <Text style={styles.pillBtnText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-/* ----------------- styles ----------------- */
 const styles = StyleSheet.create({
-  sectionTitle: {
-    color: palette.text,
-    fontSize: 16,
-    fontWeight: '900',
-    marginBottom: spacing(1),
-  },
-
-  // Generic rows
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing(1.25),
-    gap: 12,
-  },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rowIcon: { fontSize: 18 },
-
-  label: { color: palette.text, fontWeight: '900' },
-
-  // Time
-  timeRow: { flexDirection: 'row', alignItems: 'center' },
-  minutesInput: {
-    minWidth: 64,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  h1: { fontSize: 18, fontWeight: '900', color: palette.text, marginBottom: spacing(1) },
+  row: { marginTop: spacing(1) },
+  label: { color: palette.text, fontWeight: '800', marginBottom: 4 },
+  input: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    color: palette.text,
-    textAlign: 'center',
-    fontWeight: '900',
-    fontSize: 16,
-  },
-  pillBtn: {
-    backgroundColor: '#F3F4F6',
-    paddingHorizontal: 12,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 10,
     paddingVertical: 8,
-    borderRadius: 999,
+    color: palette.text,
+    fontSize: 16,
+    backgroundColor: '#fff',
   },
-  pillBtnText: { color: palette.text, fontWeight: '900' },
-
-  // Segments
-  segment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-    padding: 4,
-    gap: 4,
-  },
-  segmentBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
-  segmentBtnActive: { backgroundColor: '#6a5cff' },
-  segmentText: { color: palette.text, fontWeight: '800', fontSize: 12 },
-  segmentTextActive: { color: 'white' },
-
-  // Chips
-  rowCol: { marginBottom: spacing(1.25), gap: 8 },
-  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#F3F4F6',
-  },
-  chipActive: { backgroundColor: '#6a5cff' },
-  chipText: { color: palette.text, fontWeight: '800', fontSize: 12 },
-  chipTextActive: { color: 'white' },
-
-  // Notes
-  notesInput: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E7EB',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: palette.text,
-    minHeight: 64,
-    textAlignVertical: 'top',
-  },
-
-  // Plan header (matches Templates)
-  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    marginBottom: spacing(1),
-    gap: spacing(1),
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
   },
-  name: { color: palette.text, fontWeight: '900', fontSize: 16, flexShrink: 1 },
-  headerSummary: { color: palette.text, fontWeight: '800', fontSize: 12 },
-  date: { color: palette.sub, fontSize: 12 },
-
-  // Why card
-  justText: { color: palette.sub, lineHeight: 20 },
+  chipOn: { backgroundColor: '#6a5cff', borderColor: '#6a5cff' },
+  chipOff: { backgroundColor: '#fff', borderColor: '#D1D5DB' },
+  chipText: { fontWeight: '800' },
+  chipTextOn: { color: '#fff' },
+  chipTextOff: { color: palette.text },
 });
