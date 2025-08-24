@@ -23,13 +23,12 @@ import { getAllWorkouts } from '../store/workoutStore';
 
 // ---------- constants (settings) ----------
 const SETTINGS_KEY = 'settings:training';
-
-// NEW: OpenAI settings keys
-const OPENAI_APIKEY_KEY = 'openai:apiKey';
 const OPENAI_MODEL_KEY = 'openai:model';
 
-// Suggested models (you can edit this list)
+// Updated models list (added GPT-5)
 const OPENAI_MODELS = [
+  { id: 'gpt-5-pro', label: 'GPT-5 Pro' },
+  { id: 'gpt-5-mini', label: 'GPT-5 Mini' },
   { id: 'gpt-4o', label: 'GPT-4o' },
   { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
   { id: 'o3-mini', label: 'O3-mini' },
@@ -227,13 +226,12 @@ export default function SetupScreen() {
   const [plateRounding, setPlateRounding] = useState('lb5'); // 'lb5' | 'kg2.5'
   const [adoptRestHints, setAdoptRestHints] = useState(true);
 
-  // --- NEW: OpenAI settings UI state ---
-  const [apiKey, setApiKey] = useState('');
-  const [model, setModel] = useState(OPENAI_MODELS[1].id); // default gpt-4o-mini
+  // OpenAI model only (API key removed from UI)
+  const [model, setModel] = useState(OPENAI_MODELS[1].id); // default gpt-5-mini or gpt-4o-mini
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   const selectedModel = OPENAI_MODELS.find((m) => m.id === model) || OPENAI_MODELS[1];
 
-  // Load persisted settings (training + openai)
+  // Load persisted settings (training + model)
   useEffect(() => {
     (async () => {
       try {
@@ -245,10 +243,6 @@ export default function SetupScreen() {
             if ('adoptRestHints' in s) setAdoptRestHints(!!s.adoptRestHints);
           }
         }
-      } catch {}
-      try {
-        const k = await AsyncStorage.getItem(OPENAI_APIKEY_KEY);
-        if (typeof k === 'string') setApiKey(k);
       } catch {}
       try {
         const m = await AsyncStorage.getItem(OPENAI_MODEL_KEY);
@@ -269,14 +263,13 @@ export default function SetupScreen() {
     }
   }
 
-  // --- NEW: Save OpenAI model + API key ---
+  // Save ONLY the model (API key is read from app.json/app.config)
   async function saveOpenAISettings() {
     try {
-      await AsyncStorage.setItem(OPENAI_APIKEY_KEY, apiKey.trim());
       await AsyncStorage.setItem(OPENAI_MODEL_KEY, model);
-      Alert.alert('Saved', 'OpenAI settings updated.');
+      Alert.alert('Saved', 'OpenAI model updated.');
     } catch {
-      Alert.alert('Save failed', 'Could not save OpenAI settings. Please try again.');
+      Alert.alert('Save failed', 'Could not save OpenAI model. Please try again.');
     }
   }
 
@@ -352,7 +345,63 @@ export default function SetupScreen() {
         gap: spacing(2),
       }}
     >
-      {/* Export widget */}
+      {/* 1) OpenAI Settings (moved to top; title simplified) */}
+      <Card style={{ padding: spacing(2) }}>
+        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
+          OpenAI Settings
+        </Text>
+
+        <View style={{ height: spacing(1.25) }} />
+
+        <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>Model</Text>
+        <Pressable
+          onPress={() => setModelPickerOpen(true)}
+          style={styles.pickerBtn}
+          accessibilityRole="button"
+          accessibilityLabel="Select OpenAI model"
+        >
+          <Text style={styles.pickerBtnText}>{selectedModel?.label || model}</Text>
+          <Text style={{ color: palette.sub, fontSize: 16 }}>▾</Text>
+        </Pressable>
+
+        <View style={{ height: spacing(1.25) }} />
+        <GradientButton title="Save OpenAI Settings" onPress={saveOpenAISettings} />
+      </Card>
+
+      {/* 2) Training Settings (title simplified) */}
+      <Card style={{ padding: spacing(2) }}>
+        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
+          Training Settings
+        </Text>
+
+        <View style={{ height: spacing(1) }} />
+
+        <Text style={{ color: palette.text, fontWeight: '800' }}>Plate rounding</Text>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+          <Pressable onPress={() => setPlateRounding('lb5')} hitSlop={6}>
+            <Text style={{ color: plateRounding === 'lb5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
+              Nearest 5 lb
+            </Text>
+          </Pressable>
+          <Pressable onPress={() => setPlateRounding('kg2.5')} hitSlop={6}>
+            <Text style={{ color: plateRounding === 'kg2.5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
+              Nearest 2.5 kg
+            </Text>
+          </Pressable>
+        </View>
+
+        <View style={{ height: spacing(1) }} />
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Text style={{ color: palette.text, fontWeight: '800' }}>Adopt rest-timer hints</Text>
+          <Switch value={adoptRestHints} onValueChange={setAdoptRestHints} />
+        </View>
+
+        <View style={{ height: spacing(1) }} />
+        <GradientButton title="Save Settings" onPress={saveSettings} />
+      </Card>
+
+      {/* 3) Data Export (moved below training) */}
       <Card style={{ padding: spacing(2) }}>
         <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
           Data Export
@@ -388,82 +437,7 @@ export default function SetupScreen() {
         )}
       </Card>
 
-      {/* NEW: Rep.AI / OpenAI Settings */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          Rep.AI / OpenAI Settings
-        </Text>
-
-        <View style={{ height: spacing(1) }} />
-
-        {/* API Key (secure text with show/hide option) */}
-        <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>OpenAI API Key</Text>
-        <TextInput
-          value={apiKey}
-          onChangeText={setApiKey}
-          placeholder="sk-********************************"
-          placeholderTextColor="#9CA3AF"
-          style={styles.input}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry={true}
-        />
-        <Text style={{ color: palette.sub, fontSize: 12, marginTop: 6 }}>
-          Stored locally on your device. Used by Rep.AI to generate recommendations.
-        </Text>
-
-        <View style={{ height: spacing(1.25) }} />
-
-        {/* Model Picker */}
-        <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>Model</Text>
-        <Pressable
-          onPress={() => setModelPickerOpen(true)}
-          style={styles.pickerBtn}
-          accessibilityRole="button"
-          accessibilityLabel="Select OpenAI model"
-        >
-          <Text style={styles.pickerBtnText}>{selectedModel?.label || model}</Text>
-          <Text style={{ color: palette.sub, fontSize: 16 }}>▾</Text>
-        </Pressable>
-
-        <View style={{ height: spacing(1.25) }} />
-        <GradientButton title="Save OpenAI Settings" onPress={saveOpenAISettings} />
-      </Card>
-
-      {/* Rep.AI / Training Settings */}
-      <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          Rep.AI / Training Settings
-        </Text>
-
-        <View style={{ height: spacing(1) }} />
-
-        <Text style={{ color: palette.text, fontWeight: '800' }}>Plate rounding</Text>
-        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-          <Pressable onPress={() => setPlateRounding('lb5')} hitSlop={6}>
-            <Text style={{ color: plateRounding === 'lb5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
-              Nearest 5 lb
-            </Text>
-          </Pressable>
-          <Pressable onPress={() => setPlateRounding('kg2.5')} hitSlop={6}>
-            <Text style={{ color: plateRounding === 'kg2.5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
-              Nearest 2.5 kg
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={{ height: spacing(1) }} />
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ color: palette.text, fontWeight: '800' }}>Adopt rest-timer hints</Text>
-          <Switch value={adoptRestHints} onValueChange={setAdoptRestHints} />
-        </View>
-
-        <View style={{ height: spacing(1) }} />
-        <GradientButton title="Save Settings" onPress={saveSettings} />
-      </Card>
-
-      {/* What's included */}
+      {/* 4) What’s included */}
       <Card style={{ padding: spacing(2) }}>
         <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
           What’s included
@@ -477,7 +451,7 @@ export default function SetupScreen() {
         </Text>
       </Card>
 
-      {/* Danger Zone */}
+      {/* 5) Danger Zone (last) */}
       <Card style={{ padding: spacing(2), borderColor: '#fecaca', borderWidth: StyleSheet.hairlineWidth }}>
         <Text style={{ color: '#991B1B', fontSize: 18, fontWeight: '900', marginBottom: spacing(1) }}>
           Danger Zone
@@ -567,7 +541,6 @@ export default function SetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  // NEW styles
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#E5E7EB',
