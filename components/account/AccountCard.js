@@ -1,10 +1,11 @@
 // components/account/AccountCard.js
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, Pressable, ActivityIndicator, Alert, StyleSheet, Image } from 'react-native';
+import { View, Text, ActivityIndicator, Alert, StyleSheet, Image } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -25,17 +26,11 @@ async function loadAccount() {
     return null;
   }
 }
-
 async function saveAccount(acct) {
-  try {
-    await AsyncStorage.setItem(ACCT_KEY, JSON.stringify(acct));
-  } catch {}
+  try { await AsyncStorage.setItem(ACCT_KEY, JSON.stringify(acct)); } catch {}
 }
-
 async function clearAccount() {
-  try {
-    await AsyncStorage.removeItem(ACCT_KEY);
-  } catch {}
+  try { await AsyncStorage.removeItem(ACCT_KEY); } catch {}
 }
 
 export default function AccountCard() {
@@ -48,25 +43,23 @@ export default function AccountCard() {
   const handledCodeRef = useRef(null);
   const exchangingRef = useRef(false);
 
-  // iOS Client ID from app.json -> extra.GOOGLE_CLIENT_ID_IOS
+  // Google config (from app.json → extra)
   const iosClientId =
     Constants?.expoConfig?.extra?.GOOGLE_CLIENT_ID_IOS ||
     Constants?.manifestExtra?.GOOGLE_CLIENT_ID_IOS;
 
-  // Build the redirect URI **with a single slash** after the scheme
   const scheme =
     Constants?.expoConfig?.scheme ||
     Constants?.manifest?.scheme ||
     undefined;
 
-  // IMPORTANT: single slash (:)/
   const redirectUri = `${scheme}:/oauth2redirect/google`;
 
-  // Google PKCE auth hook (Authorization Code flow)
+  // Google PKCE hook
   const [request, response, promptAsync] = Google.useAuthRequest(
     {
       clientId: iosClientId,
-      responseType: 'code', // request code; provider may still return tokens inline
+      responseType: 'code',         // may still return inline tokens (hybrid)
       usePKCE: true,
       codeChallengeMethod: AuthSession.CodeChallengeMethod.S256,
       scopes: ['openid', 'email', 'profile'],
@@ -76,22 +69,18 @@ export default function AccountCard() {
     { useProxy: false }
   );
 
-  // Init (load existing account + Apple availability)
+  // init
   useEffect(() => {
     (async () => {
       const a = await loadAccount();
       setAcct(a);
-      try {
-        const avail = await AppleAuthentication.isAvailableAsync();
-        setAppleAvailable(!!avail);
-      } catch {
-        setAppleAvailable(false);
-      }
+      try { setAppleAvailable(await AppleAuthentication.isAvailableAsync()); }
+      catch { setAppleAvailable(false); }
       setLoading(false);
     })();
   }, []);
 
-  // Handle the Google auth response
+  // Google response handler (handles both inline tokens and code exchange)
   useEffect(() => {
     (async () => {
       if (!response) return;
@@ -100,10 +89,9 @@ export default function AccountCard() {
         return;
       }
 
-      // Prefer inline token (hybrid response) if present
+      // Prefer inline token if present (hybrid responses)
       const inlineAccessToken = response?.authentication?.accessToken || null;
       const inlineIdToken = response?.authentication?.idToken || null;
-
       if (inlineAccessToken) {
         try {
           const r = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
@@ -111,7 +99,6 @@ export default function AccountCard() {
           });
           if (!r.ok) throw new Error(`Profile fetch failed (${r.status})`);
           const profile = await r.json();
-
           const mapped = {
             provider: 'google',
             name: profile?.name || 'Google User',
@@ -128,10 +115,10 @@ export default function AccountCard() {
           setAuthBusy(false);
           try { await AsyncStorage.removeItem(PKCE_VERIFIER_KEY); } catch {}
         }
-        return; // do not attempt code exchange if inline token existed
+        return;
       }
 
-      // Otherwise, exchange the authorization code manually
+      // Otherwise, exchange the authorization code
       const code = response.params?.code || '';
       if (!code) {
         setAuthBusy(false);
@@ -146,7 +133,6 @@ export default function AccountCard() {
       exchangingRef.current = true;
 
       try {
-        // use the SAME verifier saved before opening the browser
         const codeVerifier =
           (await AsyncStorage.getItem(PKCE_VERIFIER_KEY)) ||
           request?.codeVerifier ||
@@ -202,12 +188,10 @@ export default function AccountCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [response]);
 
+  // Start Google
   const onGoogle = useCallback(async () => {
     if (!iosClientId || !scheme) {
-      Alert.alert(
-        'Google Sign-In not configured',
-        'Missing GOOGLE_CLIENT_ID_IOS or app scheme in app.json.'
-      );
+      Alert.alert('Google Sign-In not configured', 'Missing GOOGLE_CLIENT_ID_IOS or app scheme.');
       return;
     }
     if (!request) {
@@ -217,9 +201,7 @@ export default function AccountCard() {
     if (authBusy) return;
     setAuthBusy(true);
     try {
-      if (request?.codeVerifier) {
-        await AsyncStorage.setItem(PKCE_VERIFIER_KEY, request.codeVerifier);
-      }
+      if (request?.codeVerifier) await AsyncStorage.setItem(PKCE_VERIFIER_KEY, request.codeVerifier);
       handledCodeRef.current = null;
       exchangingRef.current = false;
       await promptAsync();
@@ -229,37 +211,50 @@ export default function AccountCard() {
     }
   }, [iosClientId, scheme, request, promptAsync, authBusy]);
 
+  // Start Apple
   const onApple = useCallback(async () => {
     try {
-      if (!appleAvailable) {
+      const available = await AppleAuthentication.isAvailableAsync();
+      if (!available) {
         Alert.alert('Apple Sign-In', 'Not available on this device.');
         return;
       }
+
+      // Nonce recommended (binds request/response; verify on backend if you have one)
+      const rawNonce = Math.random().toString(36).slice(2);
+      const nonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [
           AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
+        nonce,
       });
+
       const fullName =
         (credential?.fullName?.givenName || '') +
         (credential?.fullName?.familyName ? ' ' + credential.fullName.familyName : '');
+
       const mapped = {
         provider: 'apple',
-        name: (fullName || '').trim() || 'Apple User',
-        email: credential?.email || '',
-        picture: '',
         id: credential?.user || '',
-        raw: credential,
+        name: (fullName || '').trim() || 'Apple User',
+        email: credential?.email || '', // only present on first consent
+        picture: '',
+        raw: credential, // contains identityToken + authorizationCode
       };
+
       await saveAccount(mapped);
       setAcct(mapped);
+
+      // OPTIONAL: send { identityToken, authorizationCode, rawNonce } to your backend for verification
     } catch (e) {
       if (e?.code !== 'ERR_CANCELED') {
         Alert.alert('Apple Sign-In', 'Could not sign in.');
       }
     }
-  }, [appleAvailable]);
+  }, []);
 
   const onSignOut = useCallback(async () => {
     await clearAccount();
@@ -322,19 +317,13 @@ export default function AccountCard() {
 
           {/* Apple */}
           {appleAvailable ? (
-            <View>
-              <Text style={[styles.sub, { marginBottom: 6 }]}>Or continue with Apple</Text>
-              <Pressable
-                onPress={onApple}
-                style={({ pressed }) => [
-                  styles.appleBtn,
-                  { opacity: pressed ? 0.85 : 1 },
-                ]}
-                accessibilityLabel="Continue with Apple"
-              >
-                <Text style={styles.appleBtnText}>  Sign in with Apple</Text>
-              </Pressable>
-            </View>
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={10}
+              style={{ width: '100%', height: 44 }}
+              onPress={onApple}
+            />
           ) : null}
 
           <Text style={[styles.sub, { marginTop: 8 }]}>
@@ -360,15 +349,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   warnText: { color: '#92400E', fontSize: 12, fontWeight: '700' },
-
-  appleBtn: {
-    backgroundColor: '#000',
-    borderRadius: 10,
-    paddingVertical: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appleBtnText: { color: 'white', fontWeight: '900', letterSpacing: 0.3 },
 
   avatarFallback: {
     width: 40, height: 40, borderRadius: 20,
