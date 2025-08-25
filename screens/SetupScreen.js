@@ -18,6 +18,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import Card from '../components/ui/Card';
 import GradientButton from '../components/ui/GradientButton';
+import AccountCard from '../components/account/AccountCard'; // <-- NEW
 import { palette, spacing, layout } from '../theme';
 import { getAllWorkouts } from '../store/workoutStore';
 
@@ -153,7 +154,7 @@ function toCSV(rows) {
   return head + '\n' + body + '\n';
 }
 
-async function shareFileAsync(uri, _mimeType, dialogTitle) {
+async function shareFileAsync(uri, dialogTitle) {
   try {
     if (Platform.OS === 'ios') {
       await Share.share({ url: uri, title: dialogTitle });
@@ -170,7 +171,6 @@ const CHECKIN_KEY = 'wellness:checkins';
 const NAME_KEY = 'profile:name';
 
 async function deleteAllDataHard() {
-  // Try store-specific clears if available, then fall back to full AsyncStorage.clear()
   try {
     // Workouts
     try {
@@ -227,9 +227,9 @@ export default function SetupScreen() {
   const [adoptRestHints, setAdoptRestHints] = useState(true);
 
   // OpenAI model only (API key removed from UI)
-  const [model, setModel] = useState(OPENAI_MODELS[1].id); // default gpt-5-mini or gpt-4o-mini
+  const [model, setModel] = useState(OPENAI_MODELS[0].id);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const selectedModel = OPENAI_MODELS.find((m) => m.id === model) || OPENAI_MODELS[1];
+  const selectedModel = OPENAI_MODELS.find((m) => m.id === model) || OPENAI_MODELS[0];
 
   // Load persisted settings (training + model)
   useEffect(() => {
@@ -289,7 +289,7 @@ export default function SetupScreen() {
       const uri = FileSystem.documentDirectory + fileName;
       await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
       setLastExportInfo({ kind: 'CSV', count: rows.length, uri });
-      await shareFileAsync(uri, 'text/csv', 'Export Workouts (CSV)');
+      await shareFileAsync(uri, 'Export Workouts (CSV)');
     } catch {
       Alert.alert('Export failed', 'Sorry, we could not export your data.');
     } finally {
@@ -312,7 +312,7 @@ export default function SetupScreen() {
       const uri = FileSystem.documentDirectory + fileName;
       await FileSystem.writeAsStringAsync(uri, pretty, { encoding: FileSystem.EncodingType.UTF8 });
       setLastExportInfo({ kind: 'JSON', count: rows.length, uri });
-      await shareFileAsync(uri, 'application/json', 'Export Workouts (JSON)');
+      await shareFileAsync(uri, 'Export Workouts (JSON)');
     } catch {
       Alert.alert('Export failed', 'Sorry, we could not export your data.');
     } finally {
@@ -345,15 +345,18 @@ export default function SetupScreen() {
         gap: spacing(2),
       }}
     >
-      {/* 1) OpenAI Settings (moved to top; title simplified) */}
+      {/* 0) Account (NEW, on top) */}
+      <AccountCard />
+
+      {/* 1) OpenAI Settings */}
       <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          OpenAI Settings
+        <Text style={styles.header}>OpenAI Settings</Text>
+        <Text style={{ color: palette.sub, marginBottom: 6 }}>
+          API key is read from app config (app.json / app.config.js).
         </Text>
 
-        <View style={{ height: spacing(1.25) }} />
-
-        <Text style={{ color: palette.text, fontWeight: '800', marginBottom: 6 }}>Model</Text>
+        {/* Model Picker */}
+        <Text style={styles.label}>Model</Text>
         <Pressable
           onPress={() => setModelPickerOpen(true)}
           style={styles.pickerBtn}
@@ -368,15 +371,13 @@ export default function SetupScreen() {
         <GradientButton title="Save OpenAI Settings" onPress={saveOpenAISettings} />
       </Card>
 
-      {/* 2) Training Settings (title simplified) */}
+      {/* 2) Training Settings */}
       <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          Training Settings
-        </Text>
+        <Text style={styles.header}>Training Settings</Text>
 
         <View style={{ height: spacing(1) }} />
 
-        <Text style={{ color: palette.text, fontWeight: '800' }}>Plate rounding</Text>
+        <Text style={styles.label}>Plate rounding</Text>
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
           <Pressable onPress={() => setPlateRounding('lb5')} hitSlop={6}>
             <Text style={{ color: plateRounding === 'lb5' ? '#6a5cff' : palette.text, fontWeight: '900' }}>
@@ -393,7 +394,7 @@ export default function SetupScreen() {
         <View style={{ height: spacing(1) }} />
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ color: palette.text, fontWeight: '800' }}>Adopt rest-timer hints</Text>
+          <Text style={styles.label}>Adopt rest-timer hints</Text>
           <Switch value={adoptRestHints} onValueChange={setAdoptRestHints} />
         </View>
 
@@ -401,7 +402,7 @@ export default function SetupScreen() {
         <GradientButton title="Save Settings" onPress={saveSettings} />
       </Card>
 
-      {/* 3) Data Export (moved below training) */}
+      {/* 3) Data Export */}
       <Card style={{ padding: spacing(2) }}>
         <Text style={{ color: palette.text, fontSize: 22, fontWeight: '900' }}>
           Data Export
@@ -439,9 +440,7 @@ export default function SetupScreen() {
 
       {/* 4) What’s included */}
       <Card style={{ padding: spacing(2) }}>
-        <Text style={{ color: palette.text, fontSize: 18, fontWeight: '800' }}>
-          What’s included
-        </Text>
+        <Text style={styles.header}>What’s included</Text>
         <View style={{ height: 8 }} />
         <Text style={{ color: palette.sub }}>
           • Workout meta: ID, start/end time, title, units{'\n'}
@@ -451,7 +450,7 @@ export default function SetupScreen() {
         </Text>
       </Card>
 
-      {/* 5) Danger Zone (last) */}
+      {/* 5) Danger Zone */}
       <Card style={{ padding: spacing(2), borderColor: '#fecaca', borderWidth: StyleSheet.hairlineWidth }}>
         <Text style={{ color: '#991B1B', fontSize: 18, fontWeight: '900', marginBottom: spacing(1) }}>
           Danger Zone
@@ -472,7 +471,12 @@ export default function SetupScreen() {
       </Card>
 
       {/* Confirm Delete Modal */}
-      <Modal visible={delOpen} transparent animationType="fade" onRequestClose={() => setDelOpen(false)}>
+      <Modal
+        visible={delOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDelOpen(false)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Type the confirmation to proceed</Text>
@@ -509,7 +513,12 @@ export default function SetupScreen() {
       </Modal>
 
       {/* Model Picker Modal */}
-      <Modal visible={modelPickerOpen} transparent animationType="fade" onRequestClose={() => setModelPickerOpen(false)}>
+      <Modal
+        visible={modelPickerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModelPickerOpen(false)}
+      >
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { paddingBottom: 8 }]}>
             <Text style={styles.modalTitle}>Select Model</Text>
@@ -541,6 +550,8 @@ export default function SetupScreen() {
 }
 
 const styles = StyleSheet.create({
+  header: { color: palette.text, fontSize: 18, fontWeight: '800' },
+  label: { color: palette.text, fontWeight: '800', marginBottom: 6 },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#E5E7EB',

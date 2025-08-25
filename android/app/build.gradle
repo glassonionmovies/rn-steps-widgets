@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.anonymous.rnstepswidgets'
+    namespace 'com.slickms.org.dev'
     defaultConfig {
-        applicationId 'com.anonymous.rnstepswidgets'
+        applicationId 'com.slickms.org.dev'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

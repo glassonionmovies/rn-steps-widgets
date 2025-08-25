@@ -1,4 +1,4 @@
-package com.anonymous.rnstepswidgets
+package com.slickms.org.dev
 
 import android.app.Application
 import android.content.res.Configuration

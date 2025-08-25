@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "rn-steps-widgets",
+    "slug": "rn-steps-widgets",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+
+    "scheme": "com.googleusercontent.apps.757773659834-kk7tionughn73et1u1iufoi56usfo3h4",
+
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.slickms.org.dev",
+      "usesAppleSignIn": true,
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "This app reads your step count from Health to show recent activity.",
+        "NSHealthUpdateUsageDescription": "This app may write health data you authorize (not used now).",
+        "NSLocalNetworkUsageDescription": "Allow connection to the local development server on your network.",
+        "NSBonjourServices": [
+          "_http._tcp",
+          "_https._tcp",
+          "_expo-development-server._tcp",
+          "_metro._tcp"
+        ]
+      }
+    },
+
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.slickms.org.dev"
+    },
+
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+
+    "extra": {
+      "OPENAI_API_KEY": "sk-REDACTED",
+      "OPENAI_MODEL": "gpt-4o-mini",
+      "GOOGLE_CLIENT_ID_IOS": "757773659834-kk7tionughn73et1u1iufoi56usfo3h4.apps.googleusercontent.com"
+    }
+  }
+}
