@@ -8,28 +8,28 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		33AA2F969F0CCCA2C03E3985 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = DE6F8875FE15C0669DB3DB6A /* PrivacyInfo.xcprivacy */; };
+		2AD0452AC88E6D76178A4DD2 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E19626EF79FE44F27AC55692 /* ExpoModulesProvider.swift */; };
+		2FCFEC82D1C96C1BA8D425B2 /* libPods-RepAI.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B4CBF021B54069BC81687CC7 /* libPods-RepAI.a */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		7C0DE0546C255A4D10940BAC /* libPods-rnstepswidgets.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 00786C2F7FE478F355B6938F /* libPods-rnstepswidgets.a */; };
-		8635C2CD212A9C6953E363F8 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B2999CD61A46EEA2FBB97E /* ExpoModulesProvider.swift */; };
+		659E31DA3A24E6E57AB01414 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EB565B6F2F7B1621EA550504 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		00786C2F7FE478F355B6938F /* libPods-rnstepswidgets.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-rnstepswidgets.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		06EF1D0066CFA87AEDB39428 /* Pods-rnstepswidgets.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-rnstepswidgets.debug.xcconfig"; path = "Target Support Files/Pods-rnstepswidgets/Pods-rnstepswidgets.debug.xcconfig"; sourceTree = "<group>"; };
-		13B07F961A680F5B00A75B9A /* rnstepswidgets.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = rnstepswidgets.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = rnstepswidgets/Images.xcassets; sourceTree = "<group>"; };
-		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = rnstepswidgets/Info.plist; sourceTree = "<group>"; };
-		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = rnstepswidgets/SplashScreen.storyboard; sourceTree = "<group>"; };
+		13B07F961A680F5B00A75B9A /* RepAI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RepAI.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = RepAI/Images.xcassets; sourceTree = "<group>"; };
+		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = RepAI/Info.plist; sourceTree = "<group>"; };
+		3053F9207714D0F2AC50E9ED /* Pods-RepAI.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RepAI.debug.xcconfig"; path = "Target Support Files/Pods-RepAI/Pods-RepAI.debug.xcconfig"; sourceTree = "<group>"; };
+		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = RepAI/SplashScreen.storyboard; sourceTree = "<group>"; };
+		B4CBF021B54069BC81687CC7 /* libPods-RepAI.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-RepAI.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		D4B2999CD61A46EEA2FBB97E /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-rnstepswidgets/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		DE6F8875FE15C0669DB3DB6A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = rnstepswidgets/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		E394D4092F679BF68325C219 /* Pods-rnstepswidgets.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-rnstepswidgets.release.xcconfig"; path = "Target Support Files/Pods-rnstepswidgets/Pods-rnstepswidgets.release.xcconfig"; sourceTree = "<group>"; };
+		C7F94B8115A808CDAB272AEB /* Pods-RepAI.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RepAI.release.xcconfig"; path = "Target Support Files/Pods-RepAI/Pods-RepAI.release.xcconfig"; sourceTree = "<group>"; };
+		E19626EF79FE44F27AC55692 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-RepAI/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		EB565B6F2F7B1621EA550504 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = RepAI/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = rnstepswidgets/AppDelegate.swift; sourceTree = "<group>"; };
-		F11748442D0722820044C1D9 /* rnstepswidgets-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "rnstepswidgets-Bridging-Header.h"; path = "rnstepswidgets/rnstepswidgets-Bridging-Header.h"; sourceTree = "<group>"; };
+		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = RepAI/AppDelegate.swift; sourceTree = "<group>"; };
+		F11748442D0722820044C1D9 /* RepAI-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "RepAI-Bridging-Header.h"; path = "RepAI/RepAI-Bridging-Header.h"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,42 +37,43 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				7C0DE0546C255A4D10940BAC /* libPods-rnstepswidgets.a in Frameworks */,
+				2FCFEC82D1C96C1BA8D425B2 /* libPods-RepAI.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		13B07FAE1A68108700A75B9A /* rnstepswidgets */ = {
+		13B07FAE1A68108700A75B9A /* RepAI */ = {
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				F11748442D0722820044C1D9 /* rnstepswidgets-Bridging-Header.h */,
+				F11748442D0722820044C1D9 /* RepAI-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				DE6F8875FE15C0669DB3DB6A /* PrivacyInfo.xcprivacy */,
+				EB565B6F2F7B1621EA550504 /* PrivacyInfo.xcprivacy */,
 			);
-			name = rnstepswidgets;
+			name = RepAI;
+			sourceTree = "<group>";
+		};
+		23E781CE970BDDC6A194C3E1 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				3053F9207714D0F2AC50E9ED /* Pods-RepAI.debug.xcconfig */,
+				C7F94B8115A808CDAB272AEB /* Pods-RepAI.release.xcconfig */,
+			);
+			path = Pods;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				00786C2F7FE478F355B6938F /* libPods-rnstepswidgets.a */,
+				B4CBF021B54069BC81687CC7 /* libPods-RepAI.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		79E60D81909D0B936F26DB54 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				C90AF136CEAD2C09D404A49C /* rnstepswidgets */,
-			);
-			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -85,12 +86,12 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				13B07FAE1A68108700A75B9A /* rnstepswidgets */,
+				13B07FAE1A68108700A75B9A /* RepAI */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				C68207EC8486F36E48D94043 /* Pods */,
-				79E60D81909D0B936F26DB54 /* ExpoModulesProviders */,
+				23E781CE970BDDC6A194C3E1 /* Pods */,
+				F2A892EC22DF7E242AF71068 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -100,7 +101,7 @@
 		83CBBA001A601CBA00E9B192 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				13B07F961A680F5B00A75B9A /* rnstepswidgets.app */,
+				13B07F961A680F5B00A75B9A /* RepAI.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -111,49 +112,48 @@
 				BB2F792C24A3F905000567C9 /* Expo.plist */,
 			);
 			name = Supporting;
-			path = rnstepswidgets/Supporting;
+			path = RepAI/Supporting;
 			sourceTree = "<group>";
 		};
-		C68207EC8486F36E48D94043 /* Pods */ = {
+		CF655FC756807137604D0B31 /* RepAI */ = {
 			isa = PBXGroup;
 			children = (
-				06EF1D0066CFA87AEDB39428 /* Pods-rnstepswidgets.debug.xcconfig */,
-				E394D4092F679BF68325C219 /* Pods-rnstepswidgets.release.xcconfig */,
+				E19626EF79FE44F27AC55692 /* ExpoModulesProvider.swift */,
 			);
-			path = Pods;
+			name = RepAI;
 			sourceTree = "<group>";
 		};
-		C90AF136CEAD2C09D404A49C /* rnstepswidgets */ = {
+		F2A892EC22DF7E242AF71068 /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				D4B2999CD61A46EEA2FBB97E /* ExpoModulesProvider.swift */,
+				CF655FC756807137604D0B31 /* RepAI */,
 			);
-			name = rnstepswidgets;
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		13B07F861A680F5B00A75B9A /* rnstepswidgets */ = {
+		13B07F861A680F5B00A75B9A /* RepAI */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "rnstepswidgets" */;
+			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "RepAI" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				45FDAA4FD76F3278182D4FE8 /* [Expo] Configure project */,
+				40658FF5712E0E76F4A76EF0 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				FF979E33682BBE0531EC0EA8 /* [CP] Embed Pods Frameworks */,
+				737F5573C39AFFC4783332B7 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = rnstepswidgets;
-			productName = rnstepswidgets;
-			productReference = 13B07F961A680F5B00A75B9A /* rnstepswidgets.app */;
+			name = RepAI;
+			productName = RepAI;
+			productReference = 13B07F961A680F5B00A75B9A /* RepAI.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -169,7 +169,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "rnstepswidgets" */;
+			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "RepAI" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -182,7 +182,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				13B07F861A680F5B00A75B9A /* rnstepswidgets */,
+				13B07F861A680F5B00A75B9A /* RepAI */,
 			);
 		};
 /* End PBXProject section */
@@ -195,7 +195,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				33AA2F969F0CCCA2C03E3985 /* PrivacyInfo.xcprivacy in Resources */,
+				659E31DA3A24E6E57AB01414 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -232,14 +232,14 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-rnstepswidgets-checkManifestLockResult.txt",
+				"$(DERIVED_FILE_DIR)/Pods-RepAI-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		45FDAA4FD76F3278182D4FE8 /* [Expo] Configure project */ = {
+		40658FF5712E0E76F4A76EF0 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -256,7 +256,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-rnstepswidgets/expo-configure-project.sh\"\n";
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-RepAI/expo-configure-project.sh\"\n";
+		};
+		737F5573C39AFFC4783332B7 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-RepAI/Pods-RepAI-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RepAI/Pods-RepAI-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -264,7 +282,7 @@
 			files = (
 			);
 			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-rnstepswidgets/Pods-rnstepswidgets-resources.sh",
+				"${PODS_ROOT}/Target Support Files/Pods-RepAI/Pods-RepAI-resources.sh",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXApplication/ExpoApplication_privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/EXConstants.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/ExpoConstants_privacy.bundle",
@@ -293,25 +311,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-rnstepswidgets/Pods-rnstepswidgets-resources.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		FF979E33682BBE0531EC0EA8 /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-rnstepswidgets/Pods-rnstepswidgets-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-rnstepswidgets/Pods-rnstepswidgets-frameworks.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-RepAI/Pods-RepAI-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -322,7 +322,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				8635C2CD212A9C6953E363F8 /* ExpoModulesProvider.swift in Sources */,
+				2AD0452AC88E6D76178A4DD2 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,11 +331,11 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 06EF1D0066CFA87AEDB39428 /* Pods-rnstepswidgets.debug.xcconfig */;
+			baseConfigurationReference = 3053F9207714D0F2AC50E9ED /* Pods-RepAI.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = rnstepswidgets/rnstepswidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = RepAI/RepAI.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5V9SYTJM;
 				ENABLE_BITCODE = NO;
@@ -343,7 +343,7 @@
 					"$(inherited)",
 					"FB_SONARKIT_ENABLED=1",
 				);
-				INFOPLIST_FILE = rnstepswidgets/Info.plist;
+				INFOPLIST_FILE = RepAI/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -357,8 +357,8 @@
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = com.slickms.org.dev;
-				PRODUCT_NAME = rnstepswidgets;
-				SWIFT_OBJC_BRIDGING_HEADER = "rnstepswidgets/rnstepswidgets-Bridging-Header.h";
+				PRODUCT_NAME = RepAI;
+				SWIFT_OBJC_BRIDGING_HEADER = "RepAI/RepAI-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -368,14 +368,14 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E394D4092F679BF68325C219 /* Pods-rnstepswidgets.release.xcconfig */;
+			baseConfigurationReference = C7F94B8115A808CDAB272AEB /* Pods-RepAI.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = rnstepswidgets/rnstepswidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = RepAI/RepAI.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9U5V9SYTJM;
-				INFOPLIST_FILE = rnstepswidgets/Info.plist;
+				INFOPLIST_FILE = RepAI/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -389,8 +389,8 @@
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = com.slickms.org.dev;
-				PRODUCT_NAME = rnstepswidgets;
-				SWIFT_OBJC_BRIDGING_HEADER = "rnstepswidgets/rnstepswidgets-Bridging-Header.h";
+				PRODUCT_NAME = RepAI;
+				SWIFT_OBJC_BRIDGING_HEADER = "RepAI/RepAI-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
@@ -524,7 +524,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "rnstepswidgets" */ = {
+		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "RepAI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
@@ -533,7 +533,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "rnstepswidgets" */ = {
+		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "RepAI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,

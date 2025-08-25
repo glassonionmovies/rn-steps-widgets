@@ -1,20 +1,29 @@
 {
   "expo": {
-    "name": "rn-steps-widgets",
-    "slug": "rn-steps-widgets",
+    "name": "Rep.AI",
+    "slug": "rep-ai",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/brand/LogoLight.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
 
     "scheme": "com.googleusercontent.apps.757773659834-kk7tionughn73et1u1iufoi56usfo3h4",
 
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/brand/SplashLight.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/brand/SplashDark.png",
+            "backgroundColor": "#0B132B"
+          }
+        }
+      ]
+    ],
 
     "ios": {
       "supportsTablet": true,
@@ -35,8 +44,8 @@
 
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/brand/LogoLight.png",
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "package": "com.slickms.org.dev"
