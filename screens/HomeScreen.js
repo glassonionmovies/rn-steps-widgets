@@ -1,6 +1,6 @@
 // screens/HomeScreen.js
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable, TextInput } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -152,6 +152,8 @@ export default function HomeScreen() {
   const [sleep, setSleep] = useState(6);
   // NEW: mode for fasting/maintenance/bulking
   const [mode, setMode] = useState('maintenance');
+  // NEW: body weight (lb)
+  const [weightLb, setWeightLb] = useState(170);
 
   const [saving, setSaving] = useState(false);
   const [checkins, setCheckins] = useState([]);
@@ -172,8 +174,9 @@ export default function HomeScreen() {
         if (last) {
           if (typeof last.energy === 'number') setEnergy(last.energy);
           if (typeof last.sleep === 'number') setSleep(last.sleep);
-          // NEW: restore last mode if present
+          // NEW: restore last mode/weight if present
           if (typeof last.mode === 'string') setMode(last.mode);
+          if (typeof last.weightLb === 'number') setWeightLb(last.weightLb);
         }
       } catch {}
       try { const all = await getAllWorkouts(); if (active) setWorkouts(all || []); } catch {}
@@ -193,11 +196,30 @@ export default function HomeScreen() {
     }
   }, [hasToday, expanded]);
 
+  const bumpWeight = useCallback((delta) => {
+    setWeightLb(prev => {
+      const next = Math.round((Number(prev) || 0) + delta);
+      return next < 0 ? 0 : next;
+    });
+  }, []);
+
+  const onWeightText = useCallback((t) => {
+    // allow blank while editing; coerce on save
+    const n = Number(t.replace(/[^\d.]/g, ''));
+    if (Number.isFinite(n)) setWeightLb(n);
+  }, []);
+
   const saveCheckin = useCallback(async () => {
     try {
       setSaving(true);
-      // NEW: persist mode in today's entry
-      const entry = { at: new Date().toISOString(), energy: Math.round(energy), sleep: Math.round(sleep), mode };
+      const entry = {
+        at: new Date().toISOString(),
+        energy: Math.round(energy),
+        sleep: Math.round(sleep),
+        mode,
+        // NEW: persist weight in lb
+        weightLb: Math.round(Number(weightLb) || 0),
+      };
       const raw = await AsyncStorage.getItem(CHECKIN_KEY);
       let arr = raw ? JSON.parse(raw) : [];
       if (!Array.isArray(arr)) arr = [];
@@ -207,13 +229,13 @@ export default function HomeScreen() {
       await AsyncStorage.setItem(CHECKIN_KEY, JSON.stringify(arr));
       setCheckins(arr);
       setExpanded(false); // collapse after save ✅
-      Alert.alert('Saved', `Energy ${entry.energy}/10 • Sleep ${entry.sleep}/10 • Mode ${entry.mode}`);
+      Alert.alert('Saved', `Energy ${entry.energy}/10 • Sleep ${entry.sleep}/10 • Mode ${entry.mode} • Weight ${entry.weightLb} lb`);
     } catch (e) {
       Alert.alert('Error', 'Could not save your check-in.');
     } finally {
       setSaving(false);
     }
-  }, [energy, sleep, mode]);
+  }, [energy, sleep, mode, weightLb]);
 
   // weekly stats + streaks
   const weekStats = useMemo(() => {
@@ -269,14 +291,14 @@ export default function HomeScreen() {
         {expanded === false && hasToday && (
           <Pressable onPress={() => setExpanded(true)} accessibilityRole="button" style={{ paddingVertical: spacing(1) }}>
             <Text style={{ color: palette.text, fontWeight: '800' }}>
-              {/* NEW: include Mode in summary */}
-              Energy ⚡️ {latest.energy}/10    Sleep 🌙 {latest.sleep}/10     Mode 🍽️ {String(latest.mode || mode).replace(/\b\w/g, c => c.toUpperCase())}
+              {/* Include Mode and Weight in summary */}
+              Energy ⚡️ {latest.energy}/10    Sleep 🌙 {latest.sleep}/10     Mode 🍽️ {String(latest.mode || mode).replace(/\b\w/g, c => c.toUpperCase())}     Weight ⚖️ {latest.weightLb ?? weightLb} lb
             </Text>
             <Text style={{ color: palette.sub, marginTop: 4, fontSize: 12 }}>Tap to adjust</Text>
           </Pressable>
         )}
 
-        {/* Expanded state (sliders + Mode + Save). Keeps your layout/margins intact. */}
+        {/* Expanded state (sliders + Mode + Weight + Save). Keeps your layout/margins intact. */}
         {expanded !== false && (
           <>
             <View style={{ height: spacing(1) }} />
@@ -317,7 +339,7 @@ export default function HomeScreen() {
               <Text style={styles.sliderHint}>Best</Text>
             </View>
 
-            {/* NEW: Mode selector (keeps same spacing cadence) */}
+            {/* Mode selector */}
             <View style={{ height: spacing(1.25) }} />
             <Text style={styles.label}>Nutrition / Body Goal</Text>
             <View style={styles.modeRow}>
@@ -334,6 +356,25 @@ export default function HomeScreen() {
                   </Text>
                 </Pressable>
               ))}
+            </View>
+
+            {/* NEW: Body Weight (lb) control */}
+            <View style={{ height: spacing(1.25) }} />
+            <Text style={styles.label}>Body Weight (lb)</Text>
+            <View style={styles.weightRow}>
+              <Pressable onPress={() => bumpWeight(-1)} style={[styles.weightBtn, styles.weightBtnLeft]} accessibilityRole="button">
+                <Text style={styles.weightBtnText}>−</Text>
+              </Pressable>
+              <TextInput
+                value={String(Math.round(Number(weightLb) || 0))}
+                onChangeText={onWeightText}
+                keyboardType="numeric"
+                inputMode="numeric"
+                style={styles.weightInput}
+              />
+              <Pressable onPress={() => bumpWeight(1)} style={[styles.weightBtn, styles.weightBtnRight]} accessibilityRole="button">
+                <Text style={styles.weightBtnText}>＋</Text>
+              </Pressable>
             </View>
 
             <View style={{ height: spacing(1.5) }} />
@@ -412,10 +453,26 @@ const styles = StyleSheet.create({
   insightLine: { color: palette.text },
   insightBody: { color: palette.sub, marginTop: 2 },
 
-  // NEW: tiny style block for Mode chips (no global spacing changes)
+  // Mode chips
   modeRow: { flexDirection:'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   chip: { paddingVertical:8, paddingHorizontal:12, borderRadius:12, borderWidth:1, borderColor: palette.border, backgroundColor: 'transparent' },
   chipSelected: { backgroundColor: palette.accent + '22', borderColor: palette.accent },
   chipText: { color: palette.text, fontWeight:'600' },
   chipTextSelected: { color: palette.accent, fontWeight:'800' },
+
+  // NEW: Weight control
+  weightRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  weightBtn: {
+    width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: palette.border, backgroundColor: '#fff'
+  },
+  weightBtnLeft: { borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
+  weightBtnRight: { borderTopRightRadius: 10, borderBottomRightRadius: 10 },
+  weightBtnText: { fontSize: 24, fontWeight: '900', color: palette.text, lineHeight: 24 },
+  weightInput: {
+    flex: 1, marginHorizontal: 8, height: 44,
+    borderWidth: 1, borderColor: palette.border, borderRadius: 10,
+    backgroundColor: '#fff', color: palette.text,
+    paddingHorizontal: 12, fontSize: 18, fontWeight: '700', textAlign: 'center',
+  },
 });
